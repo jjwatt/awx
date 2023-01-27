@@ -30,24 +30,26 @@ services:
 {% if minikube_container_group|bool %}
       MINIKUBE_CONTAINER_GROUP: "true"
 {% endif %}
-    links:
-      - postgres
-      - redis_{{ container_postfix }}
+    networks:
+      - awxnet
+    {# links: #}
+    {#   - postgres #}
+    {#   - redis_{{ container_postfix }} #}
     working_dir: "/awx_devel"
     volumes:
       - "../../../:/awx_devel"
       - "../../docker-compose/supervisor.conf:/etc/supervisord.conf"
-      - "../../docker-compose/_sources/database.py:/etc/tower/conf.d/database.py"
-      - "../../docker-compose/_sources/websocket_secret.py:/etc/tower/conf.d/websocket_secret.py"
-      - "../../docker-compose/_sources/local_settings.py:/etc/tower/conf.d/local_settings.py"
-      - "../../docker-compose/_sources/SECRET_KEY:/etc/tower/SECRET_KEY"
-      - "../../docker-compose/_sources/receptor/receptor-awx-{{ loop.index }}.conf:/etc/receptor/receptor.conf"
-      - "../../docker-compose/_sources/receptor/receptor-awx-{{ loop.index }}.conf.lock:/etc/receptor/receptor.conf.lock"
+      - "../../docker-compose/{{ sources_dest }}/database.py:/etc/tower/conf.d/database.py"
+      - "../../docker-compose/{{ sources_dest }}/websocket_secret.py:/etc/tower/conf.d/websocket_secret.py"
+      - "../../docker-compose/{{ sources_dest }}/local_settings.py:/etc/tower/conf.d/local_settings.py"
+      - "../../docker-compose/{{ sources_dest }}/SECRET_KEY:/etc/tower/SECRET_KEY"
+      - "../../docker-compose/{{ sources_dest }}/receptor/receptor-awx-{{ loop.index }}.conf:/etc/receptor/receptor.conf"
+      - "../../docker-compose/{{ sources_dest }}/receptor/receptor-awx-{{ loop.index }}.conf.lock:/etc/receptor/receptor.conf.lock"
 {% if sign_work|bool %}
-      - "../../docker-compose/_sources/receptor/work_public_key.pem:/etc/receptor/work_public_key.pem"
-      - "../../docker-compose/_sources/receptor/work_private_key.pem:/etc/receptor/work_private_key.pem"
+      - "../../docker-compose/{{ sources_dest }}/receptor/work_public_key.pem:/etc/receptor/work_public_key.pem"
+      - "../../docker-compose/{{ sources_dest }}/receptor/work_private_key.pem:/etc/receptor/work_private_key.pem"
 {% endif %}
-      # - "../../docker-compose/_sources/certs:/etc/receptor/certs"  # TODO: optionally generate certs
+      # - "../../docker-compose/{{ sources_dest }}/certs:/etc/receptor/certs"  # TODO: optionally generate certs
       - "/sys/fs/cgroup:/sys/fs/cgroup"
       - "~/.kube/config:/var/lib/awx/.kube/config"
       - "redis_socket_{{ container_postfix }}:/var/run/redis/:rw"
@@ -88,6 +90,10 @@ services:
   {% set container_postfix = loop.index %}
     - "awx_{{ container_postfix }}"
   {% endfor %}
+
+    networks:
+      - awxnet
+
 {% endif %}
 {% if enable_keycloak|bool %}
   keycloak:
@@ -105,6 +111,8 @@ services:
       DB_PASSWORD: {{ pg_password }}
     depends_on:
       - postgres
+    networks:
+      - awxnet
 {% endif %}
 {% if enable_ldap|bool %}
   ldap:
@@ -126,8 +134,10 @@ services:
       LDAP_TLS_KEY_FILE: /opt/bitnami/openldap/certs/{{ ldap_private_key_file_name }}
     volumes:
       - 'openldap_data:/bitnami/openldap'
-      - '../../docker-compose/_sources/ldap_certs:/opt/bitnami/openldap/certs'
-      - '../../docker-compose/_sources/ldap_diffs:/opt/bitnami/openldap/ldiffs'
+      - '../../docker-compose/{{ sources_dest }}/ldap_certs:/opt/bitnami/openldap/certs'
+      - '../../docker-compose/{{ sources_dest }}/ldap_diffs:/opt/bitnami/openldap/ldiffs'
+    networks:
+      - awxnet
 {% endif %}
 {% if enable_splunk|bool %}
   splunk:
@@ -141,6 +151,8 @@ services:
     environment:
       SPLUNK_START_ARGS: --accept-license
       SPLUNK_PASSWORD: splunk_admin
+    networks:
+      - awxnet
 {% endif %}
 {% if enable_prometheus|bool %}
   prometheus:
@@ -150,12 +162,12 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - "../../docker-compose/_sources/prometheus.yml:/etc/prometheus/prometheus.yml"
+      - "../../docker-compose/{{ sources_dest }}/prometheus.yml:/etc/prometheus/prometheus.yml"
       - "prometheus_storage:/prometheus:rw"
-    links:
-{% for i in range(control_plane_node_count|int) %}
-      - awx_{{ loop.index }}:awx{{ loop.index }} # because underscores are not valid in hostnames
-{% endfor %}
+{#     links: #}
+{# {% for i in range(control_plane_node_count|int) %} #}
+{#       - awx_{{ loop.index }}:awx{{ loop.index }} # because underscores are not valid in hostnames #}
+{# {% endfor %} #}
 {% endif %}
 {% if enable_grafana|bool %}
   grafana:
@@ -167,10 +179,12 @@ services:
     volumes:
       - "../../grafana:/etc/grafana/provisioning"
       - "grafana_storage:/var/lib/grafana:rw"
-    links:
-      - prometheus
+    {# links: #}
+    {#   - prometheus #}
     depends_on:
       - prometheus
+    networks:
+      - awxnet
 {% endif %}
   # A useful container that simply passes through log messages to the console
   # helpful for testing awx/tower logging
@@ -190,6 +204,8 @@ services:
       POSTGRES_PASSWORD: {{ pg_password }}
     volumes:
       - "awx_db:/var/lib/postgresql/data"
+    networks:
+      - awxnet
 {% if execution_node_count|int > 0 %}
   receptor-hop:
     image: {{ receptor_image }}
@@ -197,12 +213,12 @@ services:
     container_name: tools_receptor_hop
     hostname: receptor-hop
     command: 'receptor --config /etc/receptor/receptor.conf'
-    links:
-      - awx_1
+    {# links: #}
+    {#   - awx_1 #}
     ports:
       - "5555:5555"
     volumes:
-      - "../../docker-compose/_sources/receptor/receptor-hop.conf:/etc/receptor/receptor.conf"
+      - "../../docker-compose/{{ sources_dest }}/receptor/receptor-hop.conf:/etc/receptor/receptor.conf"
   {% for i in range(execution_node_count|int) %}
   receptor-{{ loop.index }}:
     image: "{{ awx_image }}:{{ awx_image_tag }}"
@@ -212,15 +228,17 @@ services:
     command: 'receptor --config /etc/receptor/receptor.conf'
     environment:
       RECEPTORCTL_SOCKET: {{ receptor_socket_file }}
-    links:
-      - receptor-hop
+    {# links: #}
+    {#   - receptor-hop #}
     volumes:
       - "../../../:/awx_devel"  # not used, but mounted so that any in-place installs can be used for whole cluster
-      - "../../docker-compose/_sources/receptor/receptor-worker-{{ loop.index }}.conf:/etc/receptor/receptor.conf"
+      - "../../docker-compose/{{ sources_dest }}/receptor/receptor-worker-{{ loop.index }}.conf:/etc/receptor/receptor.conf"
       - "/sys/fs/cgroup:/sys/fs/cgroup"
-      - "../../docker-compose/_sources/receptor/work_public_key.pem:/etc/receptor/work_public_key.pem"
+      - "../../docker-compose/{{ sources_dest }}/receptor/work_public_key.pem:/etc/receptor/work_public_key.pem"
     privileged: true
   {% endfor %}
+  networks:
+    - awxnet
 {% endif %}
 
 volumes:
@@ -249,4 +267,8 @@ networks:
   default:
     external:
       name: minikube
+{% endif %}
+{% if not minikube_container_group|bool %}
+networks:
+  awxnet: {}
 {% endif %}

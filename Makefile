@@ -507,22 +507,23 @@ docker-compose-sources: .git/hooks/pre-commit
 	    -e enable_grafana=$(GRAFANA) $(EXTRA_SOURCES_ANSIBLE_OPTS)
 
 
-
+DOCKER_COMPOSE ?= docker-compose
+SOURCES ?= _sources
 docker-compose: awx/projects docker-compose-sources
-	docker-compose -f tools/docker-compose/_sources/docker-compose.yml $(COMPOSE_OPTS) up $(COMPOSE_UP_OPTS) --remove-orphans
+	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml $(COMPOSE_OPTS) up $(COMPOSE_UP_OPTS) --remove-orphans
 
 docker-compose-credential-plugins: awx/projects docker-compose-sources
 	echo -e "\033[0;31mTo generate a CyberArk Conjur API key: docker exec -it tools_conjur_1 conjurctl account create quick-start\033[0m"
-	docker-compose -f tools/docker-compose/_sources/docker-compose.yml -f tools/docker-credential-plugins-override.yml up --no-recreate awx_1 --remove-orphans
+	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml -f tools/docker-credential-plugins-override.yml up --no-recreate awx_1 --remove-orphans
 
 docker-compose-test: awx/projects docker-compose-sources
-	docker-compose -f tools/docker-compose/_sources/docker-compose.yml run --rm --service-ports awx_1 /bin/bash
+	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml run --rm --service-ports awx_1 /bin/bash
 
 docker-compose-runtest: awx/projects docker-compose-sources
-	docker-compose -f tools/docker-compose/_sources/docker-compose.yml run --rm --service-ports awx_1 /start_tests.sh
+	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml run --rm --service-ports awx_1 /start_tests.sh
 
 docker-compose-build-swagger: awx/projects docker-compose-sources
-	docker-compose -f tools/docker-compose/_sources/docker-compose.yml run --rm --service-ports --no-deps awx_1 /start_tests.sh swagger
+	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml run --rm --service-ports --no-deps awx_1 /start_tests.sh swagger
 
 SCHEMA_DIFF_BASE_BRANCH ?= devel
 detect-schema-change: genschema
@@ -531,13 +532,13 @@ detect-schema-change: genschema
 	diff -u -b reference-schema.json schema.json
 
 docker-compose-clean: awx/projects
-	docker-compose -f tools/docker-compose/_sources/docker-compose.yml rm -sf
+	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml rm -sf
 
 docker-compose-container-group-clean:
-	@if [ -f "tools/docker-compose-minikube/_sources/minikube" ]; then \
-	    tools/docker-compose-minikube/_sources/minikube delete; \
+	@if [ -f "tools/docker-compose-minikube/$(SOURCES)/minikube" ]; then \
+	    tools/docker-compose-minikube/$(SOURCES)/minikube delete; \
 	fi
-	rm -rf tools/docker-compose-minikube/_sources/
+	rm -rf tools/docker-compose-minikube/$(SOURCES)/
 
 ## Base development image build
 docker-compose-build:
@@ -559,10 +560,10 @@ docker-refresh: docker-clean docker-compose
 
 ## Docker Development Environment with Elastic Stack Connected
 docker-compose-elk: awx/projects docker-compose-sources
-	docker-compose -f tools/docker-compose/_sources/docker-compose.yml -f tools/elastic/docker-compose.logstash-link.yml -f tools/elastic/docker-compose.elastic-override.yml up --no-recreate
+	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml -f tools/elastic/docker-compose.logstash-link.yml -f tools/elastic/docker-compose.elastic-override.yml up --no-recreate
 
 docker-compose-cluster-elk: awx/projects docker-compose-sources
-	docker-compose -f tools/docker-compose/_sources/docker-compose.yml -f tools/elastic/docker-compose.logstash-link-cluster.yml -f tools/elastic/docker-compose.elastic-override.yml up --no-recreate
+	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml -f tools/elastic/docker-compose.logstash-link-cluster.yml -f tools/elastic/docker-compose.elastic-override.yml up --no-recreate
 
 docker-compose-container-group:
 	MINIKUBE_CONTAINER_GROUP=true make docker-compose
