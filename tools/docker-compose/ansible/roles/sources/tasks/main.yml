@@ -62,11 +62,11 @@
     src: "local_settings.py"
     dest: "{{ sources_dest }}/local_settings.py"
 
-- name: Get OS info for sdb
-  shell: |
-    docker info | grep 'Operating System'
-  register: os_info
-  changed_when: false
+      # - name: Get OS info for sdb
+      #   shell: |
+      #     docker info | grep 'Operating System'
+      #   register: os_info
+      #   changed_when: false
 
 - name: Get user UID
   shell: id -u
