@@ -2,7 +2,8 @@
 set +x
 
 # Move to the source directory so we can bootstrap
-if [ -f "/awx_devel/manage.py" ]; then
+if [[ -f "/awx_devel/manage.py" ]]; then
+    # FIXME: cd could fail
     cd /awx_devel
 else
     echo "Failed to find awx source tree, map your development tree volume"
@@ -22,7 +23,7 @@ fi
 # Make sure that the UI static file directory exists, Django complains otherwise.
 mkdir -p /awx_devel/awx/ui/build/static
 
-if output=$(awx-manage createsuperuser --noinput --username=admin --email=admin@localhost 2> /dev/null); then
+if output="$(awx-manage createsuperuser --noinput --username=admin --email=admin@localhost 2> /dev/null)"; then
     echo $output
 fi
 echo "Admin password: ${DJANGO_SUPERUSER_PASSWORD}"
@@ -53,5 +54,6 @@ fi
 
 # Create resource entries when using Minikube
 if [[ -n "$MINIKUBE_CONTAINER_GROUP" ]]; then
+    # FIXME: hard-coded '_sources' path string (it's settable elsewhere)
     awx-manage shell < /awx_devel/tools/docker-compose-minikube/_sources/bootstrap_minikube.py
 fi
