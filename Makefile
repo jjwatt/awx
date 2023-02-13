@@ -13,11 +13,15 @@ ifndef $(shell $(DOCKER) --help > /dev/null 2>&1 | grep 'Emulate.*podman.*')
 	DOCKER_IS_PODMAN=true
 endif
 
-# Workaround an incompatibility between podman/buildah and docker
-# --cache-from does not accept tags/digests although Docker does
-# https://github.com/containers/buildah/issues/4323
+# Handle podman
 ifeq ($(DOCKER_IS_PODMAN), true)
+  # Workaround an incompatibility between podman/buildah and docker
+  # --cache-from does not accept tags/digests although Docker does
+  # https://github.com/containers/buildah/issues/4323
 	cache_from = --cache-from=$(DEV_DOCKER_TAG_BASE)/awx_devel .
+	# Trying rootless podman by default
+	# e.g., systemctl --user start podman.socket
+  export DOCKER_HOST = unix://$(XDG_RUNTIME_DIR)/podman/podman.sock
 else
 	cache_from = --cache-from=$(DEV_DOCKER_TAG_BASE)/awx_devel:$(COMPOSE_TAG) .
 endif
@@ -562,6 +566,7 @@ docker-compose-container-group-clean:
 debug-podman:
 	@echo $(DOCKER_IS_PODMAN)
 	@echo $(cache_from)
+	@echo "docker host $(DOCKER_HOST)"
 
 ## Base development image build
 docker-compose-build:
