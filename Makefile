@@ -1,4 +1,5 @@
 PYTHON ?= python3.9
+DOCKER ?= docker
 OFFICIAL ?= no
 NODE ?= node
 NPM_BIN ?= npm
@@ -6,6 +7,20 @@ CHROMIUM_BIN=/tmp/chrome-linux/chrome
 GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 MANAGEMENT_COMMAND ?= awx-manage
 VERSION := $(shell $(PYTHON) tools/scripts/scm_version.py)
+
+# Is your docker actually podman?
+ifndef $(shell $(DOCKER) --help > /dev/null 2>&1 | grep 'Emulate.*podman.*')
+	DOCKER_IS_PODMAN=true
+endif
+
+# Workaround an incompatibility between podman/buildah and docker
+# --cache-from does not accept tags/digests although Docker does
+# https://github.com/containers/buildah/issues/4323
+ifeq ($(DOCKER_IS_PODMAN), true)
+	cache_from = --cache-from=$(DEV_DOCKER_TAG_BASE)/awx_devel .
+else
+	cache_from = --cache-from=$(DEV_DOCKER_TAG_BASE)/awx_devel:$(COMPOSE_TAG) .
+endif
 
 # ansible-test requires semver compatable version, so we allow overrides to hack it
 COLLECTION_VERSION ?= $(shell $(PYTHON) tools/scripts/scm_version.py | cut -d . -f 1-3)
@@ -59,6 +74,8 @@ SDIST_TAR_FILE ?= $(SDIST_TAR_NAME).tar.gz
 
 I18N_FLAG_FILE = .i18n_built
 
+
+
 .PHONY: awx-link clean clean-tmp clean-venv requirements requirements_dev \
 	develop refresh adduser migrate dbchange \
 	receiver test test_unit test_coverage coverage_html \
@@ -85,7 +102,7 @@ clean-languages:
 	rm -f $(I18N_FLAG_FILE)
 	find ./awx/locale/ -type f -regex '.*\.mo$$' -delete
 
-## Remove temporary build files, compiled Python files.
+# Remove temporary build files, compiled Python files.
 clean: clean-ui clean-api clean-awxkit clean-dist
 	rm -rf awx/public
 	rm -rf awx/lib/site-packages
@@ -541,12 +558,16 @@ docker-compose-container-group-clean:
 	fi
 	rm -rf tools/docker-compose-minikube/$(SOURCES)/
 
+
+debug-podman:
+	@echo $(DOCKER_IS_PODMAN)
+	@echo $(cache_from)
+
 ## Base development image build
 docker-compose-build:
 	ansible-playbook tools/ansible/dockerfile.yml -e build_dev=True -e receptor_image=$(RECEPTOR_IMAGE)
 	DOCKER_BUILDKIT=1 docker build -t $(DEVEL_IMAGE_NAME) \
-	    --build-arg BUILDKIT_INLINE_CACHE=1 \
-	    --cache-from=$(DEV_DOCKER_TAG_BASE)/awx_devel:$(COMPOSE_TAG) .
+	    --build-arg BUILDKIT_INLINE_CACHE=1 $(cache_from)
 
 docker-clean:
 	-$(foreach container_id,$(shell docker ps -f name=tools_awx -aq && docker ps -f name=tools_receptor -aq),docker stop $(container_id); docker rm -f $(container_id);)
