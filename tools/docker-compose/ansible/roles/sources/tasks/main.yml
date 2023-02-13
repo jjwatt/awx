@@ -62,11 +62,14 @@
     src: "local_settings.py"
     dest: "{{ sources_dest }}/local_settings.py"
 
-      # - name: Get OS info for sdb
-      #   shell: |
-      #     docker info | grep 'Operating System'
-      #   register: os_info
-      #   changed_when: false
+- name: Get OS info for sdb
+  # Supports docker and podman. podman reports "Os: linux" on linux
+  # and docker reports the full name of the OS in "Operating System" (e.g., NixOS 22.05 (Quokka)),
+  # but I don't think it matters much.
+  shell: |
+    docker info 2> /dev/null | awk '/Os:/ { print $2; }/Operating System/ { $1 = ""; $2 = ""; print $0; }'
+  register: os_info
+  changed_when: false
 
 - name: Get user UID
   shell: id -u
