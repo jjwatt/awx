@@ -57,6 +57,10 @@ PROMETHEUS ?= false
 # If set to true docker-compose will also start a grafana instance
 GRAFANA ?= false
 
+# FIXME: VENV_BASE is always set, but there are conditionals all over
+# that check to see if it's set. I don't think it's unset anywhere.
+# A user would have to explicitly set it to "" for those conditionals
+# to matter at all.
 VENV_BASE ?= /var/lib/awx/venv
 
 DEV_DOCKER_TAG_BASE ?= ghcr.io/ansible
@@ -186,6 +190,7 @@ develop:
 	fi
 
 version_file:
+  # TODO: Make if $(VENV_BASE) ... a macro. It's used a bagillion times.
 	mkdir -p /var/lib/awx/; \
 	if [ "$(VENV_BASE)" ]; then \
 		. $(VENV_BASE)/awx/bin/activate; \
@@ -584,9 +589,9 @@ docker-compose-build:
 	    --build-arg BUILDKIT_INLINE_CACHE=1 $(cache_from)
 
 docker-clean:
-	-$(foreach container_id,$(shell docker ps -f name=tools_awx -aq && docker ps -f name=tools_receptor -aq),docker stop $(container_id); docker rm -f $(container_id);)
+	-$(foreach container_id,$(shell docker ps --filter name=tools_awx -aq && docker ps --filter name=tools_receptor -aq),docker stop $(container_id); docker rm -f $(container_id);)
   # TODO: Figure out if it was intentional for the old code to not remove receptor images.
-	-$(foreach image_id,$(shell docker images --filter=reference='*awx_devel*' -aq),docker rmi --force $(image_id);)
+	-$(foreach image_id,$(shell docker images --filter=reference='*awx_devel*' --all --quiet),docker rmi --force $(image_id);)
 
 docker-clean-volumes: docker-compose-clean docker-compose-container-group-clean
 	docker volume rm -f tools_awx_db tools_grafana_storage tools_prometheus_storage $(docker volume ls --filter name=tools_redis_socket_ -q)
