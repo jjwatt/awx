@@ -7,6 +7,8 @@ CHROMIUM_BIN=/tmp/chrome-linux/chrome
 GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 MANAGEMENT_COMMAND ?= awx-manage
 VERSION := $(shell $(PYTHON) tools/scripts/scm_version.py)
+DOCKER_COMPOSE ?= docker-compose
+SOURCES ?= _sources
 
 # Is your docker actually podman?
 ifndef $(shell $(DOCKER) --help > /dev/null 2>&1 | grep 'Emulate.*podman.*')
@@ -19,14 +21,15 @@ ifeq ($(DOCKER_IS_PODMAN), true)
   # --cache-from does not accept tags/digests although Docker does
   # https://github.com/containers/buildah/issues/4323
 	cache_from = --cache-from=$(DEV_DOCKER_TAG_BASE)/awx_devel .
-	# Trying rootless podman by default
-	# e.g., systemctl --user start podman.socket
+  # Trying rootless podman by default
+  # e.g., systemctl --user start podman.socket
   export DOCKER_HOST = unix://$(XDG_RUNTIME_DIR)/podman/podman.sock
 else
 	cache_from = --cache-from=$(DEV_DOCKER_TAG_BASE)/awx_devel:$(COMPOSE_TAG) .
 endif
 
 # ansible-test requires semver compatable version, so we allow overrides to hack it
+# FIXME: We should not put these requirements on the Makefile rules--scm_version requires and even installs an external module. If we really need it for the build, then we should vendor it. Otherwise, use git --describe. We don't use support for other scms anywhere else in this build.
 COLLECTION_VERSION ?= $(shell $(PYTHON) tools/scripts/scm_version.py | cut -d . -f 1-3)
 # args for the ansible-test sanity command
 COLLECTION_SANITY_ARGS ?= --docker
@@ -162,6 +165,7 @@ requirements_awx: virtualenv_awx
 	fi
 	$(VENV_BASE)/awx/bin/pip uninstall --yes -r requirements/requirements_tower_uninstall.txt
 
+# FIXME: Create a $(PIP) command var and put $(VENV_BASE)/awx/bin/pip into it. Users can override $(PIP)
 requirements_awx_dev:
 	$(VENV_BASE)/awx/bin/pip install -r requirements/requirements_dev.txt
 
@@ -376,6 +380,7 @@ install_collection: build_collection
 test_collection_sanity:
 	rm -rf awx_collection_build/
 	rm -rf $(COLLECTION_INSTALL)
+  # FIXME: if ! command -v ansible-test ... OR command -v ansible-test || pip install ansible-core
 	if ! [ -x "$(shell command -v ansible-test)" ]; then pip install ansible-core; fi
 	ansible --version
 	COLLECTION_VERSION=1.0.0 make install_collection
@@ -510,11 +515,13 @@ ifneq ($(ADMIN_PASSWORD),)
 endif
 
 docker-compose-sources: .git/hooks/pre-commit
+  # FIXME: Check MINIKUBE_SETUP, too? What if it expands to nothing?
 	@if [ $(MINIKUBE_CONTAINER_GROUP) = true ]; then\
 	    ansible-playbook -i tools/docker-compose/inventory -e minikube_setup=$(MINIKUBE_SETUP) tools/docker-compose-minikube/deploy.yml; \
 	fi;
 
 	ansible-playbook -i tools/docker-compose/inventory tools/docker-compose/ansible/sources.yml \
+			-e sources=$(SOURCES) \
 	    -e awx_image=$(DEV_DOCKER_TAG_BASE)/awx_devel \
 	    -e awx_image_tag=$(COMPOSE_TAG) \
 	    -e receptor_image=$(RECEPTOR_IMAGE) \
@@ -528,8 +535,6 @@ docker-compose-sources: .git/hooks/pre-commit
 	    -e enable_grafana=$(GRAFANA) $(EXTRA_SOURCES_ANSIBLE_OPTS)
 
 
-DOCKER_COMPOSE ?= docker-compose
-SOURCES ?= _sources
 docker-compose: awx/projects docker-compose-sources
 	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml $(COMPOSE_OPTS) up $(COMPOSE_UP_OPTS) --remove-orphans
 
