@@ -7,9 +7,11 @@ CHROMIUM_BIN=/tmp/chrome-linux/chrome
 GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 MANAGEMENT_COMMAND ?= awx-manage
 VERSION := $(shell $(PYTHON) tools/scripts/scm_version.py)
+DOCKER_COMPOSE ?= docker-compose
+SOURCES ?= _sources
 
 # Is your docker actually podman?
-ifndef $(shell $(DOCKER) --help > /dev/null 2>&1 | grep 'Emulate.*podman.*')
+ifndef $(shell $(DOCKER) --help > /dev/null 2>&1 | grep '.*podman.*')
 	DOCKER_IS_PODMAN=true
 endif
 
@@ -19,14 +21,16 @@ ifeq ($(DOCKER_IS_PODMAN), true)
   # --cache-from does not accept tags/digests although Docker does
   # https://github.com/containers/buildah/issues/4323
 	cache_from = --cache-from=$(DEV_DOCKER_TAG_BASE)/awx_devel .
-	# Trying rootless podman by default
-	# e.g., systemctl --user start podman.socket
+  # Trying rootless podman by default
+  # e.g., systemctl --user start podman.socket
   export DOCKER_HOST = unix://$(XDG_RUNTIME_DIR)/podman/podman.sock
+  # TODO(jjwatt): error if SOURCES begins with an underscore
 else
 	cache_from = --cache-from=$(DEV_DOCKER_TAG_BASE)/awx_devel:$(COMPOSE_TAG) .
 endif
 
 # ansible-test requires semver compatable version, so we allow overrides to hack it
+# FIXME: We should not put these requirements on the Makefile rules--scm_version requires and even installs an external module. If we really need it for the build, then we should vendor it. Otherwise, use git --describe. We don't use support for other scms anywhere else in this build.
 COLLECTION_VERSION ?= $(shell $(PYTHON) tools/scripts/scm_version.py | cut -d . -f 1-3)
 # args for the ansible-test sanity command
 COLLECTION_SANITY_ARGS ?= --docker
@@ -54,9 +58,14 @@ PROMETHEUS ?= false
 # If set to true docker-compose will also start a grafana instance
 GRAFANA ?= false
 
+# FIXME: VENV_BASE is always set, but there are conditionals all over
+# that check to see if it's set. I don't think it's unset anywhere.
+# A user would have to explicitly set it to "" for those conditionals
+# to matter at all.
 VENV_BASE ?= /var/lib/awx/venv
 
 DEV_DOCKER_TAG_BASE ?= ghcr.io/ansible
+# TODO: Break image name from COMPOSE_TAG and add it back when needed
 DEVEL_IMAGE_NAME ?= $(DEV_DOCKER_TAG_BASE)/awx_devel:$(COMPOSE_TAG)
 
 RECEPTOR_IMAGE ?= quay.io/ansible/receptor:devel
@@ -162,6 +171,7 @@ requirements_awx: virtualenv_awx
 	fi
 	$(VENV_BASE)/awx/bin/pip uninstall --yes -r requirements/requirements_tower_uninstall.txt
 
+# FIXME: Create a $(PIP) command var and put $(VENV_BASE)/awx/bin/pip into it. Users can override $(PIP)
 requirements_awx_dev:
 	$(VENV_BASE)/awx/bin/pip install -r requirements/requirements_dev.txt
 
@@ -182,6 +192,7 @@ develop:
 	fi
 
 version_file:
+  # TODO: Make if $(VENV_BASE) ... a macro. It's used a bagillion times.
 	mkdir -p /var/lib/awx/; \
 	if [ "$(VENV_BASE)" ]; then \
 		. $(VENV_BASE)/awx/bin/activate; \
@@ -376,6 +387,7 @@ install_collection: build_collection
 test_collection_sanity:
 	rm -rf awx_collection_build/
 	rm -rf $(COLLECTION_INSTALL)
+  # FIXME: if ! command -v ansible-test ... OR command -v ansible-test || pip install ansible-core
 	if ! [ -x "$(shell command -v ansible-test)" ]; then pip install ansible-core; fi
 	ansible --version
 	COLLECTION_VERSION=1.0.0 make install_collection
@@ -515,6 +527,7 @@ docker-compose-sources: .git/hooks/pre-commit
 	fi;
 
 	ansible-playbook -i tools/docker-compose/inventory tools/docker-compose/ansible/sources.yml \
+			-e sources_dest=$(SOURCES) \
 	    -e awx_image=$(DEV_DOCKER_TAG_BASE)/awx_devel \
 	    -e awx_image_tag=$(COMPOSE_TAG) \
 	    -e receptor_image=$(RECEPTOR_IMAGE) \
@@ -528,14 +541,12 @@ docker-compose-sources: .git/hooks/pre-commit
 	    -e enable_grafana=$(GRAFANA) $(EXTRA_SOURCES_ANSIBLE_OPTS)
 
 
-DOCKER_COMPOSE ?= docker-compose
-SOURCES ?= _sources
 docker-compose: awx/projects docker-compose-sources
-	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml $(COMPOSE_OPTS) up $(COMPOSE_UP_OPTS) --remove-orphans
+	$(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml $(COMPOSE_OPTS) up $(COMPOSE_UP_OPTS) --remove-orphans
 
 docker-compose-credential-plugins: awx/projects docker-compose-sources
 	echo -e "\033[0;31mTo generate a CyberArk Conjur API key: docker exec -it tools_conjur_1 conjurctl account create quick-start\033[0m"
-	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml -f tools/docker-credential-plugins-override.yml up --no-recreate awx_1 --remove-orphans
+	$(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml -f tools/docker-credential-plugins-override.yml up --no-recreate awx_1 --remove-orphans
 
 docker-compose-test: awx/projects docker-compose-sources
 	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml run --rm --service-ports awx_1 /bin/bash
@@ -553,8 +564,8 @@ detect-schema-change: genschema
 	diff -u -b reference-schema.json schema.json
 
 docker-compose-clean: awx/projects
-  # FIXME: Check for file first
-	docker-compose -f tools/docker-compose/$(SOURCES)/docker-compose.yml rm -sf
+        # FIXME: Check for file first
+	$(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml rm -sf && $(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml down --remove-orphans
 
 docker-compose-container-group-clean:
 	@if [ -f "tools/docker-compose-minikube/$(SOURCES)/minikube" ]; then \
@@ -564,7 +575,7 @@ docker-compose-container-group-clean:
 
 
 debug-podman:
-	@echo $(DOCKER_IS_PODMAN)
+	@echo $(DOCKER_IS_PODMAN) should be true
 	@echo $(cache_from)
 	@echo "docker host $(DOCKER_HOST)"
 
@@ -575,9 +586,9 @@ docker-compose-build:
 	    --build-arg BUILDKIT_INLINE_CACHE=1 $(cache_from)
 
 docker-clean:
-	-$(foreach container_id,$(shell docker ps -f name=tools_awx -aq && docker ps -f name=tools_receptor -aq),docker stop $(container_id); docker rm -f $(container_id);)
+	-$(foreach container_id,$(shell docker ps --filter name=tools_awx -aq && docker ps --filter name=tools_receptor -aq),docker stop $(container_id); docker rm -f $(container_id);)
   # TODO: Figure out if it was intentional for the old code to not remove receptor images.
-	-$(foreach image_id,$(shell docker images --filter=reference='*awx_devel*' -aq),docker rmi --force $(image_id);)
+	-$(foreach image_id,$(shell docker images --filter=reference='*awx_devel*' --all --quiet),docker rmi --force $(image_id);)
 
 docker-clean-volumes: docker-compose-clean docker-compose-container-group-clean
 	docker volume rm -f tools_awx_db tools_grafana_storage tools_prometheus_storage $(docker volume ls --filter name=tools_redis_socket_ -q)

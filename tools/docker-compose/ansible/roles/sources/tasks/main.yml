@@ -1,6 +1,6 @@
 ---
 
-- name: Create _sources directories
+- name: Create sources directories
   file:
     path: "{{ sources_dest }}/{{ item }}"
     state: 'directory'
