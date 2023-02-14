@@ -1,6 +1,6 @@
 ---
 
-- name: Create _sources directories
+- name: Create sources directories
   file:
     path: "{{ sources_dest }}/{{ item }}"
     state: 'directory'
@@ -42,6 +42,11 @@
     dest: "{{ sources_dest }}/SECRET_KEY"
   no_log: true
 
+- name: Copy grafana dir
+  copy:
+    src: "../../../../../grafana"
+    dest: "{{ sources_dest }}/grafana"
+
 - name: Render configuration templates
   template:
     src: "{{ item }}.j2"
@@ -54,6 +59,8 @@
     - "haproxy.cfg"
     - "nginx.conf"
     - "nginx.locations.conf"
+    - "redis.conf"
+    - "supervisor.conf"
 
 - name: Get OS info for sdb
   shell: |
