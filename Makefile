@@ -527,11 +527,12 @@ docker-compose-build-swagger: awx/projects docker-compose-sources
 SCHEMA_DIFF_BASE_BRANCH ?= devel
 detect-schema-change: genschema
 	curl https://s3.amazonaws.com/awx-public-ci-files/$(SCHEMA_DIFF_BASE_BRANCH)/schema.json -o reference-schema.json
-	# Ignore differences in whitespace with -b
+  # Ignore differences in whitespace with -b
 	diff -u -b reference-schema.json schema.json
 
 docker-compose-clean: awx/projects
-	docker-compose -f tools/docker-compose/_sources/docker-compose.yml rm -sf
+  # FIXME: Check for file first
+	docker-compose -f tools/docker-compose/$(SOURCES)/docker-compose.yml rm -sf
 
 docker-compose-container-group-clean:
 	@if [ -f "tools/docker-compose-minikube/_sources/minikube" ]; then \
@@ -547,10 +548,9 @@ docker-compose-build:
 	    --cache-from=$(DEV_DOCKER_TAG_BASE)/awx_devel:$(COMPOSE_TAG) .
 
 docker-clean:
-	$(foreach container_id,$(shell docker ps -f name=tools_awx -aq && docker ps -f name=tools_receptor -aq),docker stop $(container_id); docker rm -f $(container_id);)
-	if [ "$(shell docker images | grep awx_devel)" ]; then \
-	  docker images | grep awx_devel | awk '{print $$3}' | xargs docker rmi --force; \
-	fi
+	-$(foreach container_id,$(shell docker ps -f name=tools_awx -aq && docker ps -f name=tools_receptor -aq),docker stop $(container_id); docker rm -f $(container_id);)
+  # TODO: Figure out if it was intentional for the old code to not remove receptor images.
+	-$(foreach image_id,$(shell docker images --filter=reference='*awx_devel*' -aq),docker rmi --force $(image_id);)
 
 docker-clean-volumes: docker-compose-clean docker-compose-container-group-clean
 	docker volume rm -f tools_awx_db tools_grafana_storage tools_prometheus_storage $(docker volume ls --filter name=tools_redis_socket_ -q)
