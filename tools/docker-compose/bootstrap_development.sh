@@ -1,12 +1,15 @@
 #!/bin/bash
+# FIXME: avoid noisy logs; use this instead: { set +x; } 2>/dev/null
 set +x
 
 # Move to the source directory so we can bootstrap
+# FIXME: Better way to check
 if [[ -f "/awx_devel/manage.py" ]]; then
     # FIXME: cd could fail
     cd /awx_devel
 else
     echo "Failed to find awx source tree, map your development tree volume"
+    # FIXME: exit?
 fi
 
 make awx-link
@@ -55,5 +58,5 @@ fi
 # Create resource entries when using Minikube
 if [[ -n "$MINIKUBE_CONTAINER_GROUP" ]]; then
     # FIXME: hard-coded '_sources' path string (it's settable elsewhere)
-    awx-manage shell < /awx_devel/tools/docker-compose-minikube/_sources/bootstrap_minikube.py
+    awx-manage shell < /awx_devel/tools/docker-compose-minikube/"${SOURCES:-_sources}"/bootstrap_minikube.py
 fi
