@@ -515,6 +515,7 @@ ifneq ($(ADMIN_PASSWORD),)
 endif
 
 docker-compose-sources: .git/hooks/pre-commit
+  # FIXME: It feels like this should be in a different rule
   # FIXME: Check MINIKUBE_SETUP, too? What if it expands to nothing?
 	@if [ $(MINIKUBE_CONTAINER_GROUP) = true ]; then\
 	    ansible-playbook -i tools/docker-compose/inventory -e minikube_setup=$(MINIKUBE_SETUP) tools/docker-compose-minikube/deploy.yml; \
@@ -533,7 +534,6 @@ docker-compose-sources: .git/hooks/pre-commit
 	    -e enable_splunk=$(SPLUNK) \
 	    -e enable_prometheus=$(PROMETHEUS) \
 	    -e enable_grafana=$(GRAFANA) $(EXTRA_SOURCES_ANSIBLE_OPTS)
-
 
 docker-compose: awx/projects docker-compose-sources
 	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml $(COMPOSE_OPTS) up $(COMPOSE_UP_OPTS) --remove-orphans
@@ -573,6 +573,10 @@ debug-podman:
 	@echo $(cache_from)
 	@echo "docker host $(DOCKER_HOST)"
 
+# TODO: There should be a rule that this can depend on (or depend on dev requirements rule)
+# to deal with ansible-playbook. We can keep a lower-level one if people bring their
+# own environment they can call it, but the higher level one should make sure the user
+# has ansible at the right version for development.
 ## Base development image build
 docker-compose-build:
 	ansible-playbook tools/ansible/dockerfile.yml -e build_dev=True -e receptor_image=$(RECEPTOR_IMAGE)
