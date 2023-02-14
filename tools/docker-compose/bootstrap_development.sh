@@ -2,7 +2,7 @@
 set +x
 
 # Move to the source directory so we can bootstrap
-if [ -f "/awx_devel/manage.py" ]; then
+if [[ -f "/awx_devel/manage.py" ]]; then
     cd /awx_devel
 else
     echo "Failed to find awx source tree, map your development tree volume"
@@ -53,5 +53,5 @@ fi
 
 # Create resource entries when using Minikube
 if [[ -n "$MINIKUBE_CONTAINER_GROUP" ]]; then
-    awx-manage shell < /awx_devel/tools/docker-compose-minikube/_sources/bootstrap_minikube.py
+    awx-manage shell < /awx_devel/tools/docker-compose-minikube/"${SOURCES:-_sources}"/bootstrap_minikube.py
 fi
