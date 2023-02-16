@@ -11,7 +11,7 @@ DOCKER_COMPOSE ?= docker-compose
 SOURCES ?= _sources
 
 # Is your docker actually podman?
-ifndef $(shell $(DOCKER) --help > /dev/null 2>&1 | grep 'Emulate.*podman.*')
+ifndef $(shell $(DOCKER) --help > /dev/null 2>&1 | grep '.*podman.*')
 	DOCKER_IS_PODMAN=true
 endif
 
@@ -24,6 +24,7 @@ ifeq ($(DOCKER_IS_PODMAN), true)
   # Trying rootless podman by default
   # e.g., systemctl --user start podman.socket
   export DOCKER_HOST = unix://$(XDG_RUNTIME_DIR)/podman/podman.sock
+  # TODO(jjwatt): error if SOURCES begins with an underscore
 else
 	cache_from = --cache-from=$(DEV_DOCKER_TAG_BASE)/awx_devel:$(COMPOSE_TAG) .
 endif
@@ -64,6 +65,7 @@ GRAFANA ?= false
 VENV_BASE ?= /var/lib/awx/venv
 
 DEV_DOCKER_TAG_BASE ?= ghcr.io/ansible
+# TODO: Break image name from COMPOSE_TAG and add it back when needed
 DEVEL_IMAGE_NAME ?= $(DEV_DOCKER_TAG_BASE)/awx_devel:$(COMPOSE_TAG)
 
 RECEPTOR_IMAGE ?= quay.io/ansible/receptor:devel
@@ -527,7 +529,7 @@ docker-compose-sources: .git/hooks/pre-commit
 	fi;
 
 	ansible-playbook -i tools/docker-compose/inventory tools/docker-compose/ansible/sources.yml \
-			-e sources=$(SOURCES) \
+			-e sources_dest=$(SOURCES) \
 	    -e awx_image=$(DEV_DOCKER_TAG_BASE)/awx_devel \
 	    -e awx_image_tag=$(COMPOSE_TAG) \
 	    -e receptor_image=$(RECEPTOR_IMAGE) \
@@ -541,11 +543,11 @@ docker-compose-sources: .git/hooks/pre-commit
 	    -e enable_grafana=$(GRAFANA) $(EXTRA_SOURCES_ANSIBLE_OPTS)
 
 docker-compose: awx/projects docker-compose-sources
-	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml $(COMPOSE_OPTS) up $(COMPOSE_UP_OPTS) --remove-orphans
+	$(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml $(COMPOSE_OPTS) up $(COMPOSE_UP_OPTS) --remove-orphans
 
 docker-compose-credential-plugins: awx/projects docker-compose-sources
 	echo -e "\033[0;31mTo generate a CyberArk Conjur API key: docker exec -it tools_conjur_1 conjurctl account create quick-start\033[0m"
-	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml -f tools/docker-credential-plugins-override.yml up --no-recreate awx_1 --remove-orphans
+	$(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml -f tools/docker-credential-plugins-override.yml up --no-recreate awx_1 --remove-orphans
 
 docker-compose-test: awx/projects docker-compose-sources
 	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml run --rm --service-ports awx_1 /bin/bash
@@ -564,7 +566,7 @@ detect-schema-change: genschema
 
 docker-compose-clean: awx/projects
   # FIXME: Check for file first
-	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml rm -sf
+	$(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml rm -sf && $(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml down --remove-orphans
 
 docker-compose-container-group-clean:
 	@if [ -f "tools/docker-compose-minikube/$(SOURCES)/minikube" ]; then \
@@ -574,7 +576,7 @@ docker-compose-container-group-clean:
 
 
 debug-podman:
-	@echo $(DOCKER_IS_PODMAN)
+	@echo $(DOCKER_IS_PODMAN) should be true
 	@echo $(cache_from)
 	@echo "docker host $(DOCKER_HOST)"
 

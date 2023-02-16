@@ -198,6 +198,7 @@ RUN mkdir -p /etc/containers/registries.conf.d/ && echo "unqualified-search-regi
 ADD tools/ansible/roles/dockerfile/files/rsyslog.conf /var/lib/awx/rsyslog/rsyslog.conf
 ADD tools/ansible/roles/dockerfile/files/wait-for-migrations /usr/local/bin/wait-for-migrations
 ADD tools/ansible/roles/dockerfile/files/stop-supervisor /usr/local/bin/stop-supervisor
+RUN mkdir -p /etc/tower && touch /etc/tower/SECRET_KEY
 
 ## File mappings
 {% if build_dev|bool %}
