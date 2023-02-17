@@ -29,3 +29,4 @@ if [ -z $AWX_IGNORE_USER ] ; then
 		exit 1
 	fi
 fi
+# FIXME: quote subshells, change for loop over bad find command to while read w/ print0 or -exec
