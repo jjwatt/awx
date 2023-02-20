@@ -1,12 +1,12 @@
 #!/bin/bash
 # FIXME: avoid noisy logs; use this instead: { set +x; } 2>/dev/null
-set +x
+set -x
 
 # Move to the source directory so we can bootstrap
 # FIXME: Better way to check
 if [[ -f "/awx_devel/manage.py" ]]; then
     # FIXME: cd could fail
-    cd /awx_devel
+    cd /awx_devel || exit 1
 else
     echo "Failed to find awx source tree, map your development tree volume"
     # FIXME: exit?
@@ -27,7 +27,7 @@ fi
 mkdir -p /awx_devel/awx/ui/build/static
 
 if output="$(awx-manage createsuperuser --noinput --username=admin --email=admin@localhost 2> /dev/null)"; then
-    echo $output
+    printf "%s\n" "$output"
 fi
 echo "Admin password: ${DJANGO_SUPERUSER_PASSWORD}"
 
