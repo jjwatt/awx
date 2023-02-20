@@ -525,7 +525,12 @@ docker-compose-sources: .git/hooks/pre-commit
 	@if [ $(MINIKUBE_CONTAINER_GROUP) = true ]; then\
 	    ansible-playbook -i tools/docker-compose/inventory -e minikube_setup=$(MINIKUBE_SETUP) tools/docker-compose-minikube/deploy.yml; \
 	fi;
-
+  # FIXME: use $(ANSIBLE_PLAYBOOK) var and check for existence
+  # FIXME: Playbook runs docker info, too so check for $(DOCKER)
+	mkdir -p tools/docker-compose/ansible/$(SOURCES)
+	cp tools/docker-compose/supervisor.conf tools/docker-compose/ansible/$(SOURCES) && \
+	cp tools/redis/redis.conf tools/docker-compose/ansible/$(SOURCES)/redis.conf && \
+  sync && \
 	ansible-playbook -i tools/docker-compose/inventory tools/docker-compose/ansible/sources.yml \
 			-e sources_dest=$(SOURCES) \
 	    -e awx_image=$(DEV_DOCKER_TAG_BASE)/awx_devel \
@@ -549,13 +554,13 @@ docker-compose-credential-plugins: awx/projects docker-compose-sources
 	$(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml -f tools/docker-credential-plugins-override.yml up --no-recreate awx_1 --remove-orphans
 
 docker-compose-test: awx/projects docker-compose-sources
-	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml run --rm --service-ports awx_1 /bin/bash
+	$(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml run --rm --service-ports awx_1 /bin/bash
 
 docker-compose-runtest: awx/projects docker-compose-sources
-	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml run --rm --service-ports awx_1 /start_tests.sh
+	$(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml run --rm --service-ports awx_1 /start_tests.sh
 
 docker-compose-build-swagger: awx/projects docker-compose-sources
-	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml run --rm --service-ports --no-deps awx_1 /start_tests.sh swagger
+	$(DOCKER_COMPOSE) -f tools/docker-compose/ansible/$(SOURCES)/docker-compose.yml run --rm --service-ports --no-deps awx_1 /start_tests.sh swagger
 
 SCHEMA_DIFF_BASE_BRANCH ?= devel
 detect-schema-change: genschema

@@ -8,7 +8,7 @@ services:
   {% set awx_sdb_port_end = 7999 + (loop.index0*1000) | int %}
   # Primary AWX Development Container
   awx_{{ container_postfix }}:
-    user: "{{ ansible_user_uid }}"
+    # user: "{{ ansible_user_uid }}"
     image: "{{ awx_image }}:{{ awx_image_tag }}"
     container_name: tools_awx_{{ container_postfix }}
     hostname: awx_{{ container_postfix }}
@@ -33,28 +33,29 @@ services:
 {% endif %}
     networks:
       - awxnet
-    {# links: #}
-    {#   - postgres #}
-    {#   - redis_{{ container_postfix }} #}
+    depends_on:
+      - redis_{{ container_postfix }}
+      - postgres
+
     working_dir: "/awx_devel"
     volumes:
-      - "../../../:/awx_devel"
-      - "../../docker-compose/supervisor.conf:/etc/supervisord.conf"
-      - "../../docker-compose/{{ sources_dest }}/database.py:/etc/tower/conf.d/database.py"
-      - "../../docker-compose/{{ sources_dest }}/websocket_secret.py:/etc/tower/conf.d/websocket_secret.py"
-      - "../../docker-compose/{{ sources_dest }}/local_settings.py:/etc/tower/conf.d/local_settings.py"
-      - "../../docker-compose/{{ sources_dest }}/SECRET_KEY:/etc/tower/SECRET_KEY"
-      - "../../docker-compose/{{ sources_dest }}/receptor/receptor-awx-{{ loop.index }}.conf:/etc/receptor/receptor.conf"
-      - "../../docker-compose/{{ sources_dest }}/receptor/receptor-awx-{{ loop.index }}.conf.lock:/etc/receptor/receptor.conf.lock"
+      - "../../../../:/awx_devel:z"
+      - "./supervisor.conf:/etc/supervisord.conf"
+      - "./database.py:/etc/tower/conf.d/database.py"
+      - "./websocket_secret.py:/etc/tower/conf.d/websocket_secret.py"
+      - "./local_settings.py:/etc/tower/conf.d/local_settings.py"
+      - "./SECRET_KEY:/etc/tower/SECRET_KEY"
+      - "./receptor/receptor-awx-{{ loop.index }}.conf:/etc/receptor/receptor.conf"
+      - "./receptor/receptor-awx-{{ loop.index }}.conf.lock:/etc/receptor/receptor.conf.lock"
 {% if sign_work|bool %}
-      - "../../docker-compose/{{ sources_dest }}/receptor/work_public_key.pem:/etc/receptor/work_public_key.pem"
-      - "../../docker-compose/{{ sources_dest }}/receptor/work_private_key.pem:/etc/receptor/work_private_key.pem"
+      - "./receptor/work_public_key.pem:/etc/receptor/work_public_key.pem"
+      - "./receptor/work_private_key.pem:/etc/receptor/work_private_key.pem"
 {% endif %}
-      # - "../../docker-compose/{{ sources_dest }}/certs:/etc/receptor/certs"  # TODO: optionally generate certs
+      # - "certs:/etc/receptor/certs"  # TODO: optionally generate certs
       - "/sys/fs/cgroup:/sys/fs/cgroup"
       - "~/.kube/config:/var/lib/awx/.kube/config"
-      - "redis_socket_{{ container_postfix }}:/var/run/redis/:rw"
-    privileged: true
+      - "redis_socket_{{ container_postfix }}:/var/run/redis/:rw,z"
+    # privileged: true
     tty: true
     ports:
       - "{{ awx_sdb_port_start }}-{{ awx_sdb_port_end }}:{{ awx_sdb_port_start }}-{{ awx_sdb_port_end }}"  # sdb-listen
@@ -71,10 +72,14 @@ services:
     image: redis:latest
     container_name: tools_redis_{{ container_postfix }}
     volumes:
-      - "../../redis/redis.conf:/usr/local/etc/redis/redis.conf"
-      - "redis_socket_{{ container_postfix }}:/var/run/redis/:rw"
-    entrypoint: ["redis-server"]
-    command: ["/usr/local/etc/redis/redis.conf"]
+      - "./redis.conf:/usr/local/etc/redis.conf:Z"
+      - "redis_socket_{{ container_postfix }}:/var/run/redis/:rw,z"
+    # entrypoint: ["redis-server"]
+    command: ["bash", "-c", "redis-server /usr/local/etc/redis.conf"]
+    # TODO: Since this uses the socket, it does not even need networking
+    networks:
+      - awxnet
+    # privileged: true
 {% endfor %}
 {% if control_plane_node_count|int > 1 %}
   haproxy:
@@ -91,10 +96,8 @@ services:
   {% set container_postfix = loop.index %}
     - "awx_{{ container_postfix }}"
   {% endfor %}
-
     networks:
       - awxnet
-
 {% endif %}
 {% if enable_keycloak|bool %}
   keycloak:
@@ -135,8 +138,8 @@ services:
       LDAP_TLS_KEY_FILE: /opt/bitnami/openldap/certs/{{ ldap_private_key_file_name }}
     volumes:
       - 'openldap_data:/bitnami/openldap'
-      - '../../docker-compose/{{ sources_dest }}/ldap_certs:/opt/bitnami/openldap/certs'
-      - '../../docker-compose/{{ sources_dest }}/ldap_diffs:/opt/bitnami/openldap/ldiffs'
+      - 'ldap_certs:/opt/bitnami/openldap/certs'
+      - 'ldap_diffs:/opt/bitnami/openldap/ldiffs'
     networks:
       - awxnet
 {% endif %}
@@ -163,7 +166,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - "../../docker-compose/{{ sources_dest }}/prometheus.yml:/etc/prometheus/prometheus.yml"
+      - "./prometheus.yml:/etc/prometheus/prometheus.yml"
       - "prometheus_storage:/prometheus:rw"
 {#     links: #}
 {# {% for i in range(control_plane_node_count|int) %} #}
@@ -178,7 +181,7 @@ services:
     ports:
       - "3001:3000"
     volumes:
-      - "../../grafana:/etc/grafana/provisioning"
+      - "../../../grafana:/etc/grafana/provisioning"
       - "grafana_storage:/var/lib/grafana:rw"
     {# links: #}
     {#   - prometheus #}
@@ -204,7 +207,7 @@ services:
       POSTGRES_DB: {{ pg_database }}
       POSTGRES_PASSWORD: {{ pg_password }}
     volumes:
-      - "awx_db:/var/lib/postgresql/data"
+      - "awx_db:/var/lib/postgresql/data:Z"
     networks:
       - awxnet
 {% if execution_node_count|int > 0 %}
@@ -219,7 +222,9 @@ services:
     ports:
       - "5555:5555"
     volumes:
-      - "../../docker-compose/{{ sources_dest }}/receptor/receptor-hop.conf:/etc/receptor/receptor.conf"
+      - "./receptor/receptor-hop.conf:/etc/receptor/receptor.conf"
+    networks:
+      - awxnet
   {% for i in range(execution_node_count|int) %}
   receptor-{{ loop.index }}:
     image: "{{ awx_image }}:{{ awx_image_tag }}"
@@ -232,10 +237,10 @@ services:
     {# links: #}
     {#   - receptor-hop #}
     volumes:
-      - "../../../:/awx_devel"  # not used, but mounted so that any in-place installs can be used for whole cluster
-      - "../../docker-compose/{{ sources_dest }}/receptor/receptor-worker-{{ loop.index }}.conf:/etc/receptor/receptor.conf"
+      - "../../../../:/awx_devel:z"  # not used, but mounted so that any in-place installs can be used for whole cluster
+      - "./receptor/receptor-worker-{{ loop.index }}.conf:/etc/receptor/receptor.conf"
       - "/sys/fs/cgroup:/sys/fs/cgroup"
-      - "../../docker-compose/{{ sources_dest }}/receptor/work_public_key.pem:/etc/receptor/work_public_key.pem"
+      - "./receptor/work_public_key.pem:/etc/receptor/work_public_key.pem"
     privileged: true
   {% endfor %}
   networks:
@@ -244,11 +249,11 @@ services:
 
 volumes:
   awx_db:
-    name: tools_awx_db
+#    name: tools_awx_db
 {% for i in range(control_plane_node_count|int) -%}
   {% set container_postfix = loop.index %}
   redis_socket_{{ container_postfix }}:
-    name: tools_redis_socket_{{ container_postfix }}
+#    name: tools_redis_socket_{{ container_postfix }}
 {% endfor -%}
 {% if enable_ldap|bool %}
   openldap_data:
