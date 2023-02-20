@@ -35,12 +35,11 @@ services:
       - awxnet
     depends_on:
       - redis_{{ container_postfix }}
-    {# links: #}
-    {#   - postgres #}
-    {#   - redis_{{ container_postfix }} #}
+      - postgres
+
     working_dir: "/awx_devel"
     volumes:
-      - "../../../../:/awx_devel"
+      - "../../../../:/awx_devel:z"
       - "./supervisor.conf:/etc/supervisord.conf"
       - "./database.py:/etc/tower/conf.d/database.py"
       - "./websocket_secret.py:/etc/tower/conf.d/websocket_secret.py"
@@ -55,7 +54,7 @@ services:
       # - "certs:/etc/receptor/certs"  # TODO: optionally generate certs
       - "/sys/fs/cgroup:/sys/fs/cgroup"
       - "~/.kube/config:/var/lib/awx/.kube/config"
-      - "redis_socket_{{ container_postfix }}:/var/run/redis/:rw"
+      - "redis_socket_{{ container_postfix }}:/var/run/redis/:rw,z"
     # privileged: true
     tty: true
     ports:
@@ -73,10 +72,11 @@ services:
     image: redis:latest
     container_name: tools_redis_{{ container_postfix }}
     volumes:
-      - "redis_socket_{{ container_postfix }}:/var/run/redis/:rw"
-      - "./redis.conf:/usr/local/etc/redis.conf"
+      - "./redis.conf:/usr/local/etc/redis.conf:Z"
+      - "redis_socket_{{ container_postfix }}:/var/run/redis/:rw,z"
     # entrypoint: ["redis-server"]
-    command: ["redis-server", "/usr/local/etc/redis.conf"]
+    command: ["bash", "-c", "redis-server /usr/local/etc/redis.conf"]
+    # TODO: Since this uses the socket, it does not even need networking
     networks:
       - awxnet
     # privileged: true
@@ -96,10 +96,8 @@ services:
   {% set container_postfix = loop.index %}
     - "awx_{{ container_postfix }}"
   {% endfor %}
-
     networks:
       - awxnet
-
 {% endif %}
 {% if enable_keycloak|bool %}
   keycloak:
@@ -209,7 +207,7 @@ services:
       POSTGRES_DB: {{ pg_database }}
       POSTGRES_PASSWORD: {{ pg_password }}
     volumes:
-      - "awx_db:/var/lib/postgresql/data"
+      - "awx_db:/var/lib/postgresql/data:Z"
     networks:
       - awxnet
 {% if execution_node_count|int > 0 %}
@@ -239,7 +237,7 @@ services:
     {# links: #}
     {#   - receptor-hop #}
     volumes:
-      - "../../../../:/awx_devel"  # not used, but mounted so that any in-place installs can be used for whole cluster
+      - "../../../../:/awx_devel:z"  # not used, but mounted so that any in-place installs can be used for whole cluster
       - "./receptor/receptor-worker-{{ loop.index }}.conf:/etc/receptor/receptor.conf"
       - "/sys/fs/cgroup:/sys/fs/cgroup"
       - "./receptor/work_public_key.pem:/etc/receptor/work_public_key.pem"
