@@ -152,9 +152,7 @@ virtualenv: virtualenv_awx
 # similar to pip, setuptools, and wheel, these are all needed here as a bootstrapping issues
 virtualenv_awx:
 	if [ "$(VENV_BASE)" ]; then \
-		if [ ! -d "$(VENV_BASE)" ]; then \
-			mkdir $(VENV_BASE); \
-		fi; \
+		mkdir -p $(VENV_BASE); \
 		if [ ! -d "$(VENV_BASE)/awx" ]; then \
 			$(PYTHON) -m venv $(VENV_BASE)/awx; \
 			$(VENV_BASE)/awx/bin/pip install $(PIP_OPTIONS) $(VENV_BOOTSTRAP); \
@@ -164,12 +162,15 @@ virtualenv_awx:
 ## Install third-party requirements needed for AWX's environment.
 # this does not use system site packages intentionally
 requirements_awx: virtualenv_awx
-	if [[ "$(PIP_OPTIONS)" == *"--no-index"* ]]; then \
+	case "$(PIP_OPTIONS)" in \
+		*--no-index*) \
 	    cat requirements/requirements.txt requirements/requirements_local.txt | $(VENV_BASE)/awx/bin/pip install $(PIP_OPTIONS) -r /dev/stdin ; \
-	else \
+	    ;; \
+		*) \
 	    cat requirements/requirements.txt requirements/requirements_git.txt | $(VENV_BASE)/awx/bin/pip install $(PIP_OPTIONS) --no-binary $(SRC_ONLY_PKGS) -r /dev/stdin ; \
-	fi
-	$(VENV_BASE)/awx/bin/pip uninstall --yes -r requirements/requirements_tower_uninstall.txt
+	    ;; \
+	esac
+	echo $(VENV_BASE)/awx/bin/pip uninstall --yes -r requirements/requirements_tower_uninstall.txt
 
 # FIXME: Create a $(PIP) command var and put $(VENV_BASE)/awx/bin/pip into it. Users can override $(PIP)
 requirements_awx_dev:
@@ -295,6 +296,7 @@ black: reports
 	@command -v black >/dev/null 2>&1 || { echo "could not find black on your PATH, you may need to \`pip install black\`, or set AWX_IGNORE_BLACK=1" && exit 1; }
 	@(set -o pipefail && $@ $(BLACK_ARGS) awx awxkit awx_collection | tee reports/$@.report)
 
+# TODO: Use a here doc or soemthing instead of several subshells with append
 .git/hooks/pre-commit:
 	@echo "if [ -x pre-commit.sh ]; then" > .git/hooks/pre-commit
 	@echo "    ./pre-commit.sh;" >> .git/hooks/pre-commit
@@ -366,6 +368,7 @@ test_collection_all: test_collection
 # WARNING: symlinking a collection is fundamentally unstable
 # this is for rapid development iteration with playbooks, do not use with other test targets
 symlink_collection:
+	# FIXME: Dangerous if $(COLLECTION_INSTALL) is /, emtpy or contains spaces
 	rm -rf $(COLLECTION_INSTALL)
 	mkdir -p ~/.ansible/collections/ansible_collections/$(COLLECTION_NAMESPACE)  # in case it does not exist
 	ln -s $(shell pwd)/awx_collection $(COLLECTION_INSTALL)
@@ -381,6 +384,7 @@ awx_collection_build: $(shell find awx_collection -type f)
 build_collection: awx_collection_build
 
 install_collection: build_collection
+	# FIXME: Dangerous if $(COLLECTION_INSTALL) is /, emtpy or contains spaces
 	rm -rf $(COLLECTION_INSTALL)
 	ansible-galaxy collection install awx_collection_build/$(COLLECTION_NAMESPACE)-$(COLLECTION_PACKAGE)-$(COLLECTION_VERSION).tar.gz
 
@@ -394,6 +398,7 @@ test_collection_sanity:
 	cd $(COLLECTION_INSTALL) && ansible-test sanity $(COLLECTION_SANITY_ARGS)
 
 test_collection_integration: install_collection
+	# FIXME: Test result of cd
 	cd $(COLLECTION_INSTALL) && ansible-test integration $(COLLECTION_TEST_TARGET)
 
 test_unit:
@@ -437,6 +442,7 @@ clean-ui:
 	rm -rf awx/ui/node_modules
 	rm -rf awx/ui/build
 	rm -rf awx/ui/src/locales/_build
+	# FIXME: Dangerous if $(UI_BUILD_FLAG_FILE) is / or has spaces
 	rm -rf $(UI_BUILD_FLAG_FILE)
         # the collectstatic command doesn't like it if this dir doesn't exist.
 	mkdir -p awx/ui/build/static
@@ -468,6 +474,7 @@ ui-devel-instrumented: awx/ui/node_modules
 ui-devel-test: awx/ui/node_modules
 	$(NPM_BIN) --prefix awx/ui --loglevel warn run start
 
+# TODO: macro functions for, e.g., $(NPM_BIN) run --prefix $1 {lint, test}
 ui-lint:
 	$(NPM_BIN) --prefix awx/ui install
 	$(NPM_BIN) run --prefix awx/ui lint
@@ -577,6 +584,7 @@ docker-compose-container-group-clean:
 	@if [ -f "tools/docker-compose-minikube/$(SOURCES)/minikube" ]; then \
 	    tools/docker-compose-minikube/$(SOURCES)/minikube delete; \
 	fi
+	# FIXME: Dangerous if $(SOURCES) is empty
 	rm -rf tools/docker-compose-minikube/$(SOURCES)/
 
 
@@ -597,7 +605,6 @@ docker-compose-build:
 
 docker-clean:
 	-$(foreach container_id,$(shell docker ps --filter name=tools_awx -aq && docker ps --filter name=tools_receptor -aq),docker stop $(container_id); docker rm -f $(container_id);)
-  # TODO: Figure out if it was intentional for the old code to not remove receptor images.
 	-$(foreach image_id,$(shell docker images --filter=reference='*awx_devel*' --all --quiet),docker rmi --force $(image_id);)
 
 docker-clean-volumes: docker-compose-clean docker-compose-container-group-clean
@@ -605,6 +612,7 @@ docker-clean-volumes: docker-compose-clean docker-compose-container-group-clean
 
 docker-refresh: docker-clean docker-compose
 
+# TODO: macro these calls to docker compose with options
 ## Docker Development Environment with Elastic Stack Connected
 docker-compose-elk: awx/projects docker-compose-sources
 	$(DOCKER_COMPOSE) -f tools/docker-compose/$(SOURCES)/docker-compose.yml -f tools/elastic/docker-compose.logstash-link.yml -f tools/elastic/docker-compose.elastic-override.yml up --no-recreate
@@ -616,6 +624,7 @@ docker-compose-container-group:
 	MINIKUBE_CONTAINER_GROUP=true make docker-compose
 
 clean-elk:
+	# TODO: Loops
 	docker stop tools_kibana_1
 	docker stop tools_logstash_1
 	docker stop tools_elasticsearch_1
@@ -633,15 +642,18 @@ PYTHON_VERSION:
 	@echo "$(PYTHON)" | sed 's:python::'
 
 Dockerfile: tools/ansible/roles/dockerfile/templates/Dockerfile.j2
+	# TODO: Check var
 	ansible-playbook tools/ansible/dockerfile.yml -e receptor_image=$(RECEPTOR_IMAGE)
 
 Dockerfile.kube-dev: tools/ansible/roles/dockerfile/templates/Dockerfile.j2
+	# TODO: Check var
 	ansible-playbook tools/ansible/dockerfile.yml \
 	    -e dockerfile_name=Dockerfile.kube-dev \
 	    -e kube_dev=True \
 	    -e template_dest=_build_kube_dev \
 	    -e receptor_image=$(RECEPTOR_IMAGE)
 
+# TODO: Fold a lot of these build rules into single rules with condition vars or checks to figure out the build
 ## Build awx_kube_devel image for development on local Kubernetes environment.
 awx-kube-dev-build: Dockerfile.kube-dev
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile.kube-dev \
