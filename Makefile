@@ -1,6 +1,7 @@
 -include awx/ui_next/Makefile
 
 PYTHON := $(notdir $(shell for i in python3.9 python3; do command -v $$i; done|sed 1q))
+DOCKER ?= docker
 DOCKER_COMPOSE ?= docker-compose
 OFFICIAL ?= no
 NODE ?= node
@@ -322,7 +323,7 @@ test:
 github_ci_setup:
 	# GITHUB_ACTOR is automatic github actions env var
 	# CI_GITHUB_TOKEN is defined in .github files
-	echo $(CI_GITHUB_TOKEN) | docker login ghcr.io -u $(GITHUB_ACTOR) --password-stdin
+	(echo $(CI_GITHUB_TOKEN) | $(DOCKER) login ghcr.io -u $(GITHUB_ACTOR) --password-stdin) || :
 	docker pull $(DEVEL_IMAGE_NAME) || :  # Pre-pull image to warm build cache
 	$(MAKE) docker-compose-build
 
