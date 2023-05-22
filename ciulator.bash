@@ -38,7 +38,8 @@ sh_main () {
     # image! maybe even a -devel option to set it to devel directly.
     export GIT_BRANCH="$(git_branch)"
     export COMPOSE_TAG=${COMPOSE_TAG:-$GIT_BRANCH}
-    export DEVEL_IMAGE_NAME=${DEV_DOCKER_TAG_BASE:-ghcr.io/ansible}:${COMPOSE_TAG}
+    export DEV_DOCKER_TAG_BASE=${DEV_DOCKER_TAG_BASE:-ghcr.io/ansible}
+    export DEVEL_IMAGE_NAME=${DEV_DOCKER_TAG_BASE}:${COMPOSE_TAG}
     echo "THIS PART WOULD RUN IN GITHUB ACTIONS VM"
     # TODO: Option for which runner to use
     # TODO: case on test names. e.g., api-test, api-lint
@@ -111,7 +112,16 @@ my_docker_runner () {
 test_docker_runner () {
     DOCKER=echo my_docker_runner
 }
-test_docker_runner
+# test_docker_runner
+
+test_sh_main () {
+    DOCKER=echo sh_main
+    printf "DEVEL_IMAGE_NAME: %s\n" ${DEVEL_IMAGE_NAME} || :
+    printf "DEV_DOCKER_TAG_BASE: %s\n" ${DEV_DOCKER_TAG_BASE} || :
+    printf "COMPOSE_TAG: %s\n" ${COMPOSE_TAG} || :
+}
+test_sh_main
+
 runner () {
     # if flag_optimized then use my docker_runner with
     # this AWX_DOCKER_CMD, otherwise call
