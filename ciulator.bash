@@ -81,28 +81,37 @@ sh_main () {
 #   make github_ci_setup && ansible-playbook tools/docker-compose/ansible/smoke-test.yml -v
 #
 
-# So, my first real command line option could be like:
-# "accuracy" : run it through all the levels of make with
-#   AWX_DOCKER_CMD=$CMD make github_ci_runner
-# just like github actions does.
-# or optimized, where I skip the unneeded levels of make
-# and go straight to docker-runner.
-
 # With a couple of shell functions and defining the environment, we can probably
 # leave make out of everything.
 
 # This mimics the 'make docker-runner' target.
-# TODO: Look at arguments for AWX_DOCKER_CMD and use
-# it or the global $AWX_DOCKER_CMD.
-# TODO: Make sure $DEVEL_IMAGE_NAME is set to something
-# TODO: Allow setting 'docker' command from the runner()
-docker_runner () {
-    docker run -u "$(id -u)" --rm \
+make_docker_runner () {
+    "${DOCKER}" run -u "$(id -u)" --rm \
            -v "$(pwd)":/awx_devel:Z \
            --workdir=/awx_devel "${DEVEL_IMAGE_NAME}" \
            "${AWX_DOCKER_CMD}"
 }
 
+my_docker_runner () {
+    # NOTE: These defaults might let you run api-tests
+    # without building any docker images, etc.
+    # Everything from ./ is copied into the container,
+    # anyway, so you could still get dev/test versions,
+    # especially if we make sure that like `make awx-link`
+    # gets run (it does get run from /start_tests.sh)
+    # TODO: To be tested.
+    : ${DOCKER:=docker}
+    : ${DEVEL_IMAGE_NAME:=devel}
+    # Inside baseball here. This is what 'api-tests' does
+    # eventually.
+    : ${AWX_DOCKER_CMD:=/start_tests.sh}
+    make_docker_runner
+}
+
+test_docker_runner () {
+    DOCKER=echo my_docker_runner
+}
+test_docker_runner
 runner () {
     # if flag_optimized then use my docker_runner with
     # this AWX_DOCKER_CMD, otherwise call
