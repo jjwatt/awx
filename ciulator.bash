@@ -36,6 +36,8 @@ sh_main () {
     # TODO: -b branch option to name a branch, and when we do that we can skip
     # running git. e.g., you might want to just run it with the devel docker
     # image! maybe even a -devel option to set it to devel directly.
+    # setting defaults and setting global environment vars
+    # maybe support reading from .env later
     export GIT_BRANCH="$(git_branch)"
     export COMPOSE_TAG=${COMPOSE_TAG:-$GIT_BRANCH}
     export DEV_DOCKER_TAG_BASE=${DEV_DOCKER_TAG_BASE:-ghcr.io/ansible}
@@ -70,6 +72,10 @@ sh_main () {
 # an example of fruit from the analysis: you could do
 # the same thing while testing locally or in CI...
 
+# In fact, you don't even need docker for some of these.
+# So, it might be cool to have the option to run them
+# just in a venv locally without docker.
+
 # A dry runner could just echo what it would do
 
 # A step runner could pause between each step
@@ -87,8 +93,8 @@ sh_main () {
 
 # This mimics the 'make docker-runner' target.
 make_docker_runner () {
-    "${DOCKER}" run -u "$(id -u)" --rm \
-           -v "$(pwd)":/awx_devel:Z \
+    "${DOCKER}" run -u "${UID}" --rm \
+           -v "${PWD}":/awx_devel:Z \
            --workdir=/awx_devel "${DEVEL_IMAGE_NAME}" \
            "${AWX_DOCKER_CMD}"
 }
