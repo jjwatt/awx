@@ -1,4 +1,4 @@
-#!/bin/env bash
+#!/bin/bash
 
 # ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄     ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄         ▄ 
 # ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌   ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌       ▐░▌
@@ -18,6 +18,53 @@
 # GitHub's full-blown runner is here:
 #   https://github.com/actions/runner
 # But, for now I think this'll do the trick.
+
+# We're evolving into a tool for bootstrapping and running tests and dev
+# instances of AWX. Below is a list of environment variables that affect CI-SH
+# runs.
+
+# BOOTSTRAP_AWX_VERBOSE
+# BOOTSTRAP_AWXDEV_ETC
+# BOOTSTRAP_AWXDEV_VENV - The venv path to use
+
+# TODO: Build a 'bootstrap' subcommand and/or flag that mostly depends on a few
+# environment variables and stuff it can figure out portably.
+bootstrap() {
+    echo "bootstrapping..."
+    # Yes, this is ugly. Just copied from the ugly Makefile for now.
+    pipbs="pip==21.2.4 setuptools==65.6.3 setuptools_scm[toml]==7.0.5 wheel==0.38.4"
+    : "${VENV_BOOTSTRAP:=$pipbs}"
+    : "${BOOTSTRAP_AWXDEV_VENV:=./v}"
+    printf "Using: %s\n" "${BOOTSTRAP_AWXDEV_VENV}"
+    python -m venv "${BOOTSTRAP_AWXDEV_VENV}"
+    printf "Using: %s\n" "${VENV_BOOTSTRAP}"
+    pippath="${BOOTSTRAP_AWXDEV_VENV}"/bin/pip
+    # SC2086 disabled because double-quoting it makes pip fail for some reason.
+    # shellcheck disable=SC2086
+    "${pippath}" install ${VENV_BOOTSTRAP}
+}
+test_bootstrap() {
+    tmpdir="$(mktemp -d)"
+    echo "${tmpdir}"
+    cd "${tmpdir}" || exit 1
+    bootstrap
+    echo "removing ${tmpdir}..."
+    rm -rf "${tmpdir}"
+
+    echo "testing if idempotent..."
+    tmpdir="$(mktemp -d)"
+    cd "${tmpdir}" || exit 1
+    echo "bootstrapping new dir..."
+    bootstrap
+    echo "bootstrapping again"
+    bootstrap
+    echo "bootstrapping again"
+    bootstrap
+    echo "removing ${tmpdir}..."
+    echo "bye"
+}
+test_bootstrap
+# Suddenly, I'm thinking of execline from the s6 guy and djb exec chaining...
 
 # TODO: grab the names and commands out of the ci.yml file
 # and run them in a container.
@@ -41,11 +88,11 @@
 # I think we can get away with copying DEVEL_IMAGE_NAME and its parts from the
 # Makefile (just do what it does, but use default-if-exists shell expansions).
 # Mainly DEVEL_IMAGE_NAME and COMPOSE_TAG
-git_branch () {
+git_branch() {
     git rev-parse --abbrev-ref HEAD
 }
 
-sh_main () {
+sh_main() {
     # TODO: -b branch option to name a branch, and when we do that we can skip
     # running git. e.g., you might want to just run it with the devel docker
     # image! maybe even a -devel option to set it to devel directly.
@@ -139,7 +186,6 @@ test_sh_main () {
     printf "DEV_DOCKER_TAG_BASE: %s\n" ${DEV_DOCKER_TAG_BASE} || :
     printf "COMPOSE_TAG: %s\n" ${COMPOSE_TAG} || :
 }
-test_sh_main
 
 runner () {
     # if flag_optimized then use my docker_runner with
@@ -156,10 +202,11 @@ api_test () {
     # github/ci stuff stubbed out.
     # Nah. Decide how to do it in the sh_main
     # OK, maybe a runner() function,
-    # then the tests functions would mainly just setup.cfg    # the command and call runner. Like:
-    # AWX_DOCKER_CMD=/start_tests.sh runner
-    # or do other stuff, then
-    # runner
+
+    # then the tests functions would mainly just setup the command and call
+    # runner. Like: AWX_DOCKER_CMD=/start_tests.sh runner or do other stuff,
+    # then runner
+    export AWX_DOCKER_CMD=/start_tests.sh && _call_runner
 }
 
 stub_env () {
