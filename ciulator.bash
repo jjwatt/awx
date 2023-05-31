@@ -42,7 +42,26 @@ bootstrap() {
     # SC2086 disabled because double-quoting it makes pip fail for some reason.
     # shellcheck disable=SC2086
     "${pippath}" install ${VENV_BOOTSTRAP}
+
+    # We need some other bullshit, too, that isn't in the Makefile's
+    # VENV_BOOTSTRAP string list var for some reason. I'm just going
+    # to close my eyes and do this here, but really I bet this could
+    # go into the same requirements list pip joint thingy.
+    command -V ansible-playbook || "${pippath}" install ansible-core
+    command -V docker-compose || "${pippath}" install docker-compose
 }
+
+install_deps_rhel8() {
+   sudo dnf install openldap-devel \
+        postgresql postgresql-devel \
+        xmlsec1-devel libxml2-devel \
+        libtool-ltdl-devel
+}
+
+install_deps() {
+   install_deps_rhel8
+}
+
 test_bootstrap() {
     tmpdir="$(mktemp -d)"
     echo "${tmpdir}"
@@ -56,9 +75,9 @@ test_bootstrap() {
     cd "${tmpdir}" || exit 1
     echo "bootstrapping new dir..."
     bootstrap
-    echo "bootstrapping again"
+    echo "bootstrapping in same place again"
     bootstrap
-    echo "bootstrapping again"
+    echo "bootstrapping in same place again"
     bootstrap
     echo "removing ${tmpdir}..."
     echo "bye"
