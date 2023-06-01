@@ -3,7 +3,8 @@
 set -o errexit
 set -o nounset
 
-readonly CMDNAME=$(basename "$0")
+CMDNAME=$(basename "$0")
+readonly CMDNAME
 
 readonly MIN_SLEEP=0.5
 readonly MAX_SLEEP=30
@@ -13,15 +14,23 @@ readonly TIMEOUT=60
 log_message() { echo "[${CMDNAME}]" "$@" >&2; }
 log_error() { echo "[${CMDNAME}] ERROR:" "$@" >&2; }
 
+fp() {
+    awk "BEGIN { print $* }"
+}
 # Args: last_sleep
 next_sleep() {
-    awk "BEGIN {ns = ${1} * 2; ns = ns > ${MAX_SLEEP} ? ${MAX_SLEEP} : ns; print(ns)}"
+    : "${MAX_SLEEP:=30}"
+    local next
+    # Double input as long as the result of doubling is below MAX_SLEEP
+    next=$(fp "2 * $1")
+    [[ $next -gt $MAX_SLEEP ]] && next="${MAX_SLEEP}"
+    printf "%s\n" "${next}"
 }
 
 wait_for() {
     local rc=1
     local attempt=1
-    local next_sleep="${MIN_SLEEP}"
+    local next_sleep="${MIN_SLEEP:-0.5}"
     local check=1
 
     while true; do
