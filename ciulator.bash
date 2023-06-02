@@ -19,21 +19,57 @@
 #   https://github.com/actions/runner
 # But, for now I think this'll do the trick.
 
-# We're evolving into a tool for bootstrapping and running tests and dev
-# instances of AWX. Below is a list of environment variables that affect CI-SH
-# runs.
+# We're evolving into a tool for bootstrapping, wrapping and running tests and
+# dev instances of AWX. Below is a list of environment variables that affect
+# CI-SH runs.
+
+# TODO(jjwatt): Support .env / dotenv informal spec (and maybe yml?)
 
 # BOOTSTRAP_AWX_VERBOSE
 # BOOTSTRAP_AWXDEV_ETC
 # BOOTSTRAP_AWXDEV_VENV - The venv path to use
 
-# TODO: Build a 'bootstrap' subcommand and/or flag that mostly depends on a few
-# environment variables and stuff it can figure out portably.
-bootstrap() {
+# bootstrap()
+#   Attempts to do a minimum bootstrap of the dev environment.
+#     - Ensures python versions
+#     - Creates venv dir
+#     - Installs specific versions of pip, setuptools, etc.
+#       into the venv, by default.
+#     - TODO: See about supporting running certain paths w/o venv
+#
+# TODO: rename this to bootstrap_pip or something and rework it that way
+# Thinking about this more, I wonder what if I just mostly ignored pip
+# the way that the Makefile inadvertently does :).
+# Like, I think what I'm really after at first here is just like a
+# safe_make() that sets up the environment and invokes make with
+# the command that forces environment overrides of make vars so that
+# I can override (e.g.) VERSION.
+# Could do a series of wrappers that can setup the environment in
+# certain ways and then exec into the next command.
+# maybe venv can be one of those wrappers.
+# see what it takes to manage a python3 venv -- not much, see v/bin/activate
+# The safe_make() with fixed or injected VERSION might actually be
+# a pattern for a template where one can override a set of make vars.
+# well, like just setup the environment with the same names as Make vars
+# and call make with the force env overrides flag.
+# Might be able to test one or both of my versioning alternatives with this, too!
+# If we ever *really* needed to, we could have/gen an alternative makefile that
+# we call make with -f and it can include/override the original one/normal one.
+bootstrap_venv() {
     echo "bootstrapping..."
     # Yes, this is ugly. Just copied from the ugly Makefile for now.
+    # TODO: Figure out if we really need pip 21.2.4, etc.
+    # NOTE: On my system, I think the pip string makes my pip constantly install and
+    #       uninstall every time I run the pip install command.
+    # NOTE: I think `pip install` might be aggressively non-idempotent
     pipbs="pip==21.2.4 setuptools==65.6.3 setuptools_scm[toml]==7.0.5 wheel==0.38.4"
+    # hmm. this stuff is kind of bullshit sometimes, too. You don't necessarily
+    # need this stuff if you're going to be running the docker compose build, etc.
     : "${VENV_BOOTSTRAP:=$pipbs}"
+    # The VENV_BOOTSTRAP var and what we do with it, installing with pip,
+    # is all straight from the Makefile. But, this seems kind of weird to
+    # me, too, because I think there is a feature of pip to read env vars
+    # and install things like this?
     : "${BOOTSTRAP_AWXDEV_VENV:=./v}"
     printf "Using: %s\n" "${BOOTSTRAP_AWXDEV_VENV}"
     python -m venv "${BOOTSTRAP_AWXDEV_VENV}"
@@ -47,19 +83,32 @@ bootstrap() {
     # VENV_BOOTSTRAP string list var for some reason. I'm just going
     # to close my eyes and do this here, but really I bet this could
     # go into the same requirements list pip joint thingy.
+    # Thinking about it, though, these are slightly less bullshit in
+    # the typical dev case of running docker-compose. Like, this is
+    # all that should be needed and not the weird bootstrap var from
+    # the Makefile--it's either for the version string mess and/or
+    # the bootstrap requirements are for actual awx business logic
+    # stuff and not for building and running the containers and tests
+    # in the containers
     command -V ansible-playbook || "${pippath}" install ansible-core
     command -V docker-compose || "${pippath}" install docker-compose
+    # printf "%s\n" "${BOOTSTRAP_AWXDEV_VENV}"
 }
 
 install_deps_rhel8() {
-   sudo dnf install openldap-devel \
+    # Install deps that I needed on rhel8 in order to use
+    # the awx repo, dev and build tools.
+    # I'm not sure what's needed on other environments right now,
+    # but I know I've done similar installs on Fedora {37,38}
+    # too.
+    sudo dnf install openldap-devel \
         postgresql postgresql-devel \
         xmlsec1-devel libxml2-devel \
         libtool-ltdl-devel
 }
 
 install_deps() {
-   install_deps_rhel8
+    install_deps_rhel8
 }
 
 test_bootstrap() {
@@ -82,11 +131,14 @@ test_bootstrap() {
     echo "removing ${tmpdir}..."
     echo "bye"
 }
-test_bootstrap
+#test_bootstrap
+
+
 # Suddenly, I'm thinking of execline from the s6 guy and djb exec chaining...
+# maybe combine that with the .env reading...
 
 # TODO: grab the names and commands out of the ci.yml file
-# and run them in a container.
+# and run them.
 
 # We can read the ci.yml file with jq or yq and parse
 # out all the commands later. For now, let's just get
