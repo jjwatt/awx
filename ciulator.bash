@@ -57,6 +57,7 @@
 # we call make with -f and it can include/override the original one/normal one.
 bootstrap_venv() {
     echo "bootstrapping..."
+    # TODO: Take venv path as argument
     # Yes, this is ugly. Just copied from the ugly Makefile for now.
     # TODO: Figure out if we really need pip 21.2.4, etc.
     # NOTE: On my system, I think the pip string makes my pip constantly install and
@@ -90,10 +91,91 @@ bootstrap_venv() {
     # the bootstrap requirements are for actual awx business logic
     # stuff and not for building and running the containers and tests
     # in the containers
+    # TODO: separate this from the other pip install stuff
     command -V ansible-playbook || "${pippath}" install ansible-core
     command -V docker-compose || "${pippath}" install docker-compose
     # printf "%s\n" "${BOOTSTRAP_AWXDEV_VENV}"
 }
+
+# NOTE: prototype interface thingy
+# set_version $version andmake VERSION
+# or even override make: e.g.,
+#   make() { andmake "$@" }
+#   make() { envmake "$@" }
+# I like the name envmake for my function that overrides make vars from env
+# That might even be able to work with stuff from outside like calling
+# 'make test' if we extract that as a string and use it from inside this
+# script.
+# set_branch devel set_version $myversion make
+#   - could possibly use my modified make/envmake
+#   - and may even be able to wrap "external" invocations of like 'make something'
+# NOTE:
+# AWX_DOCKER_CMD, DEVEL_IMAGE_NAME, 'make docker-runner'
+# I like the idea of keeping it simple with like 'set_version', 'set_devel_image_name' functions,
+# even if they're repetitive because like if you really wanted you could use shell's
+# string macro/command language features to build a macro-ish thing like generate
+# set_${env_var} fns or just wrap in other env-muckers
+# And, really, now I can see that those aren't much different than just setting vars, e.g.
+#   VERSION=$myversion DEVEL_IMAGE_NAME=devel "$@"
+#   VERSION=$myversion DEVEL_IMAGE_NAME=devel make "$@"
+# but that's ok, because I think it's a worthwhile abstraction and like for the trying to
+# control fetching devel docker image instead of building, can build it up like
+# set_image_
+# It will help simplify the convoluted mix of like DEVEL_IMAGE_NAME, COMPOSE_TAG,
+# GIT_BRANCH, DEV_DOCKER_TAG_BASE, etc.
+# Mentioning that, now I need to reference this files sh_main to remember how
+# some of those are composed in the Makefile. But, anyway, there should be
+# a pretty clean way to say like, set_image_and_branch devel set_awx_cmd "make test" make docker-runner**
+# and have it try to download/cache the devel docker image and create a container
+# and run make test in it, but skip the local build and docker-compose build junk.
+# ** and whatever combinators that is can go under like shortcircuit-devel-test
+#    or something like that. nobuild-devel-test, patented-nobuild-test,
+#    jjwatts-pattented-no-build-devel-test, ya know, something
+# And if I do it from this script, or maybe even sourced in an interactive shell,
+# then it should use my overridden make() function which can intercept and
+# enforce use of my envmake() to "setup the environment"* and call the real make
+# with force environment overrides.
+# * envmake actually does not have to do anything to setup the environment since
+#   it can depend on the helpers and callers to have already set it up, and
+#   all it actually has to do is call the real make properly.
+# We have all this stuff to control/inject stuff at container run-time, but
+# so many of the make targets and dev/build paths force going through the
+# container build and docker-compose build.
+# Let's see what happens when I hack what I can to skip it and use the cached
+# container image from the internet and start it with the same 'docker-runner'
+# make target that the github_ci_runner uses (or equiv).
+#
+# And, hopefully it will become clearer how much time and CPU savings this could
+# offer (and bandwidth and dependency hells). Like, the way stuff is run now, it
+# looks like even if you pull a pre-built image, it still copies the awx
+# root/repo/dev joint into the running container over the pre-built image, so a
+# lot of dynamic shit will still work just fine with the pre-built image. Like,
+# make'in and running the py.test stuff and all that would/should use the
+# CWD/hot/dirty dev directory we're in and not the one from the pre-built image
+# anyway. So, we could be forcing these builds at *every* little ci step and on
+# *every* dev machine, etc. etc. even if they just want to run make test with
+# files from their dir. And, that might go double or triple for if it's a light
+# weight or "constrained" platform, vm, container, etc. Like maybe all it needs
+# to do is pull that image and run it, not involve docker image building etc.
+# It might even immediately enable us to at least run dev tests in an environment
+# without docker--like, podman chokes on the build right now, but it could probably
+# do just fine with pulling the pre-built image, setting up the volumes, etc. and
+# running tests! But, we can't do that because it's forced to have to be able to
+# do the build *before* it can just run it. That's lame.
+
+# And, as soon as you go down the path of `make docker-compose` and all that
+# in this repo, you're instantly adding a ton of complexity. So, any time you
+# can avoid it, you should. It immediately starts involving ansible-playbook and
+# calling into ansible roles and tasks which is like a different "world," and
+# those things are doing their own things and can do just about anything, and
+# they're even calling make on the same makefile and in the same repo and
+# everything! So, it's a wild world. We'll be trying to simplify those paths,
+# too, but part of simplifying these right now would be to avoid those, if at
+# all possible.
+
+# TODO(jjwatt): define docker(), too so that I can control calls to that.
+# e.g., probably want to capture calls to 'docker info' to avoid bugs
+# in the main.yml playbook and getting os info.
 
 install_deps_rhel8() {
     # Install deps that I needed on rhel8 in order to use
