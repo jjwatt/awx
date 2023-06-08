@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# TODO: Change to CIMU or CI-MU
 # ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄     ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄         ▄ 
 # ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌   ▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░▌       ▐░▌
 # ▐░█▀▀▀▀▀▀▀▀▀  ▀▀▀▀█░█▀▀▀▀     ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀▀▀ ▐░▌       ▐░▌
@@ -238,6 +239,46 @@ test_bootstrap() {
 # To *really* see what happens, I think I should stub/bypass the GITHUB vars and
 # run the exact thing that the ci.yml runs.
 
+# Stash the realmake early in case we clobber it or need to call it at a higher level
+realmake=$(command -v make)
+
+envmake() {
+    echo "inside envmake about to call realmake with overrides" >&2
+    echo "realmake is: ${realmake}" >&2
+    echo "version env vars from envmake(): VERSION=${VERSION}, COLLECTION_VERSION=${COLLECTION_VERSION}" >&2
+    "${realmake}" --environment-overrides "$@"
+}
+make() {
+    echo "using my make about to call envmake" >&2
+    envmake "$@"
+}
+pip_uninstalls() {
+    pip uninstall -y setuptools-scm ansible-core || :
+}
+set_branch() {
+    export GIT_BRANCH="$1"
+    shift
+    export COMPOSE_TAG="${GIT_BRANCH}"
+    export DEV_DOCKER_TAG_BASE=${DEV_DOCKER_TAG_BASE:-ghcr.io/ansible}
+    export DEVEL_IMAGE_NAME=${DEV_DOCKER_TAG_BASE}:${COMPOSE_TAG}
+    # TODO: Probably need to only exec into "$@" if there are more args
+    "$@"
+}
+set_version() {
+    # Hah. Goddamn. I think I just got bit by an off-by-one/double-doer kinda thing
+    # The COMPOSE_VERSION whatever joint runs the same setuptools scm junk, so
+    # even if I override VERSION and the hack works, the pip install will probably
+    # still be tirggered by the COMPOSE_VERSION thing. Anyway, look for any shell
+    # calls and override all those here just to make sure!
+    # It's COLLECTION_VERSION :
+    #   COLLECTION_VERSION ?= $(shell $(PYTHON) tools/scripts/scm_version.py | cut -d . -f 1-3)
+    VERSION="$1"
+    shift
+    COLLECTION_VERSION="$(echo "$VERSION" | cut -d . -f 1-3)"
+    export VERSION
+    export COLLECTION_VERSION
+    "$@"
+}
 # I think we can get away with copying DEVEL_IMAGE_NAME and its parts from the
 # Makefile (just do what it does, but use default-if-exists shell expansions).
 # Mainly DEVEL_IMAGE_NAME and COMPOSE_TAG
@@ -251,13 +292,38 @@ sh_main() {
     # image! maybe even a -devel option to set it to devel directly.
     # setting defaults and setting global environment vars
     # maybe support reading from .env later
+    # TODO: This gitbranch call should probably be somewhere else.
     export GIT_BRANCH="$(git_branch)"
-    export COMPOSE_TAG=${COMPOSE_TAG:-$GIT_BRANCH}
-    export DEV_DOCKER_TAG_BASE=${DEV_DOCKER_TAG_BASE:-ghcr.io/ansible}
-    export DEVEL_IMAGE_NAME=${DEV_DOCKER_TAG_BASE}:${COMPOSE_TAG}
     echo "THIS PART WOULD RUN IN GITHUB ACTIONS VM"
     # TODO: Option for which runner to use
     # TODO: case on test names. e.g., api-test, api-lint
+    echo "# and @ from sh_main: $# , $*"
+    if [[ $# -gt 0 ]]; then
+        sub="$1"
+        shift
+        case $sub in
+            nukepip)
+                pip_uninstalls
+            ;;
+            test)
+                # Let's just test running api-tests at first for now
+                set_branch devel set_version 0.1dev make print-VERSION
+            ;;
+            *)
+                echo "unknown subcommand: $sub"
+            ;;
+        esac
+
+    fi
+}
+
+
+test_sh_main () {
+    echo $"@"
+    DOCKER=echo sh_main "$@"
+    printf "DEVEL_IMAGE_NAME: %s\n" ${DEVEL_IMAGE_NAME} || :
+    printf "DEV_DOCKER_TAG_BASE: %s\n" ${DEV_DOCKER_TAG_BASE} || :
+    printf "COMPOSE_TAG: %s\n" ${COMPOSE_TAG} || :
 }
 
 # All a runner really has to do is accept a command to
@@ -333,12 +399,6 @@ test_docker_runner () {
 }
 # test_docker_runner
 
-test_sh_main () {
-    DOCKER=echo sh_main
-    printf "DEVEL_IMAGE_NAME: %s\n" ${DEVEL_IMAGE_NAME} || :
-    printf "DEV_DOCKER_TAG_BASE: %s\n" ${DEV_DOCKER_TAG_BASE} || :
-    printf "COMPOSE_TAG: %s\n" ${COMPOSE_TAG} || :
-}
 
 runner () {
     # if flag_optimized then use my docker_runner with
@@ -359,7 +419,8 @@ api_test () {
     # then the tests functions would mainly just setup the command and call
     # runner. Like: AWX_DOCKER_CMD=/start_tests.sh runner or do other stuff,
     # then runner
-    export AWX_DOCKER_CMD=/start_tests.sh && _call_runner
+    export AWX_DOCKER_CMD=/start_tests.sh
+        # && _call_runner
 }
 
 stub_env () {
@@ -371,6 +432,9 @@ _make_github_ci_runner () {
     stub_env
     make github_ci_runner
 }
+
+## MAIN CALL ##
+test_sh_main "$@"
 
 # All the commands really do is call docker.
 # I don't need to run them in a container twice, but
