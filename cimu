@@ -67,8 +67,10 @@ set_branch() {
     export GIT_BRANCH="$1"
     shift
     export COMPOSE_TAG="${GIT_BRANCH}"
+    # All this just stolen from the Makefile for now
+    # TODO(jjwatt): Refactor
     export DEV_DOCKER_TAG_BASE=${DEV_DOCKER_TAG_BASE:-ghcr.io/ansible}
-    export DEVEL_IMAGE_NAME=${DEV_DOCKER_TAG_BASE}:${COMPOSE_TAG}
+    export DEVEL_IMAGE_NAME=${DEV_DOCKER_TAG_BASE}/awx_devel:${COMPOSE_TAG}
     # TODO: Probably need to only exec into "$@" if there are more args
     "$@"
 }
@@ -144,7 +146,6 @@ api_test () {
     # runner. Like: AWX_DOCKER_CMD=/start_tests.sh runner or do other stuff,
     # then runner
     export AWX_DOCKER_CMD=/start_tests.sh
-        # && _call_runner
 }
 stub_github_env () {
     export CI_GITHUB_TOKEN="fakeass-gh-token"
@@ -156,7 +157,58 @@ _make_github_ci_runner () {
     make github_ci_runner
 }
 do_ci() {
-    echo "Not implemented yet"
+    # TODO: runner="makerunner"
+    if [[ $# -gt 0 ]]; then
+        sub="$1"
+        shift
+        case $sub in
+            github-ci-runner-api-tests)
+                # This is the "normal" flow that's called from github
+                # It's got some issues that we can get around, though
+                # Like, `github_ci_runner` depends on `github_ci_setup`
+                # which *forces* a call to `$(MAKE) docker-compose-build`
+                # even though that might be totally unnecessary (e.g.,
+                # we can just run the tests with the pulled image?)
+                # So, I will provide another path that tries to avoid that.
+                stub_github_env
+                export AWX_DOCKER_CMD=/start_tests.sh
+                # Let's try to force devel for now. Fix this later because
+                # probably not everyone will want it. I just want to see
+                # what it does v. my other runners.
+                set_branch devel set_version 0.1.dev make AWX_DOCKER_CMD=/start_tests.sh github_ci_runner
+            ;;
+            make-docker-runner-api-tests)
+                # This one still uses make but calls directly `make docker-runner`
+                # which, amazingly, has no pre-requisites/depdendencies in the Makefile :)
+                stub_github_env  # I don't think I need this here
+                # See start_tests.sh; without args it falls through and calls `make test` from within the container
+                export AWX_DOCKER_CMD=/start_tests.sh
+                set_branch devel set_version 0.1.dev set_awx_docker_cmd /start_tests.sh make docker-runner
+            ;;
+            docker-runner-api-tests)
+                # This one goes straight to running docker without calling make on the host at all
+                # Funny that this doesn't care about a version or anything.
+                # I guess it kind of assumes that the image exists.
+                # TODO(jjwatt): If we're going to do this, then add error handling for image existence
+                stub_github_env # just in case?
+                : "${UID:=$(id -u)}"
+                : "${PWD:=$(pwd)}"
+                : "${DEVEL_IMAGE_NAME:=devel}"
+                : "${AWX_DOCKER_CMD:=/start_tests.sh}"
+                export UID PWD DEVEL_IMAGE_NAME AWX_DOCKER_CMD
+                "${DOCKER:-docker}" run -u "${UID}" --rm \
+                            -v "${PWD}":/awx_devel:Z \
+                            --workdir=/awx_devel "${DEVEL_IMAGE_NAME}" \
+                            "${AWX_DOCKER_CMD}"
+            ;;
+            *)
+                # Figure out how to run a make command or something here.
+                echo set_branch devel set_version 0.1.dev "${sub}"
+        esac
+    else
+        echo "No args to do_ci. DEBUGGING echo: "
+        echo set_branch devel set_version 0.1.dev make tests
+    fi
 }
 sh_main() {
     # TODO: This gitbranch call should probably be somewhere else.
@@ -174,6 +226,9 @@ sh_main() {
                 # Let's just test running api-tests at first for now
                 set_branch devel set_version 0.1dev make print-VERSION
             ;;
+            ci)
+                do_ci "$@"
+            ;;
             *)
                 echo "unknown subcommand: $sub"
             ;;
@@ -183,10 +238,10 @@ sh_main() {
 }
 test_sh_main () {
     echo $"@"
-    DOCKER=echo sh_main "$@"
-    printf "DEVEL_IMAGE_NAME: %s\n" ${DEVEL_IMAGE_NAME} || :
-    printf "DEV_DOCKER_TAG_BASE: %s\n" ${DEV_DOCKER_TAG_BASE} || :
-    printf "COMPOSE_TAG: %s\n" ${COMPOSE_TAG} || :
+    sh_main "$@"
+    # printf "DEVEL_IMAGE_NAME: %s\n" ${DEVEL_IMAGE_NAME} || :
+    # printf "DEV_DOCKER_TAG_BASE: %s\n" ${DEV_DOCKER_TAG_BASE} || :
+    # printf "COMPOSE_TAG: %s\n" ${COMPOSE_TAG} || :
 }
 ## MAIN CALL ##
 test_sh_main "$@"
