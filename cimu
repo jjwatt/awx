@@ -22,11 +22,10 @@
 # dev instances of AWX. Below is a list of environment variables that affect
 # CI-SH runs.
 
-# TODO(jjwatt): Support .env / dotenv informal spec (and maybe yml?)
-
-# BOOTSTRAP_AWX_VERBOSE
-# BOOTSTRAP_AWXDEV_ETC
-# BOOTSTRAP_AWXDEV_VENV - The venv path to use
+error () {
+	  echo >&2 "error: $*"
+	  exit 1
+}
 
 # TODO(jjwatt): define docker(), too so that I can control calls to that.
 # e.g., probably want to capture calls to 'docker info' to avoid bugs
@@ -170,6 +169,11 @@ do_ci() {
                 # even though that might be totally unnecessary (e.g.,
                 # we can just run the tests with the pulled image?)
                 # So, I will provide another path that tries to avoid that.
+
+                # Since the make rule will force docker compose build, we should
+                # make sure we have some stuff first:
+                command -v ansible-playbook || error "No ansible-playbook command available"
+                command -v docker-compose || error "No docker-compose command available"
                 stub_github_env
                 export AWX_DOCKER_CMD=/start_tests.sh
                 # Let's try to force devel for now. Fix this later because
@@ -180,12 +184,13 @@ do_ci() {
             make-docker-runner-api-tests)
                 # This one still uses make but calls directly `make docker-runner`
                 # which, amazingly, has no pre-requisites/depdendencies in the Makefile :)
+                # So, it shouldn't force make docker-compose-build like the other one does
                 stub_github_env  # I don't think I need this here
                 # See start_tests.sh; without args it falls through and calls `make test` from within the container
                 export AWX_DOCKER_CMD=/start_tests.sh
                 set_branch devel set_version 0.1.dev set_awx_docker_cmd /start_tests.sh make docker-runner
             ;;
-            docker-runner-api-tests)
+            docker-api-tests)
                 # This one goes straight to running docker without calling make on the host at all
                 # Funny that this doesn't care about a version or anything.
                 # I guess it kind of assumes that the image exists.
