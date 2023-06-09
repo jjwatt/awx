@@ -47,6 +47,9 @@ install_deps() {
 }
 # Stash the realmake early in case we clobber it or need to call it at a higher level
 realmake=$(command -v make)
+# TODO: Maybe build a list of environment overrides that need to be on the command line
+# I read that if you provide var=val to make, it will ignore defs in the Makefile
+# Test first and then see if I can take advantage of that.
 envmake() {
     echo "inside envmake about to call realmake with overrides" >&2
     echo "realmake is: ${realmake}" >&2
@@ -67,6 +70,11 @@ set_branch() {
     export DEV_DOCKER_TAG_BASE=${DEV_DOCKER_TAG_BASE:-ghcr.io/ansible}
     export DEVEL_IMAGE_NAME=${DEV_DOCKER_TAG_BASE}:${COMPOSE_TAG}
     # TODO: Probably need to only exec into "$@" if there are more args
+    "$@"
+}
+set_awx_docker_cmd() {
+    export AWX_DOCKER_CMD="$1"
+    shift
     "$@"
 }
 set_version() {
@@ -90,36 +98,6 @@ set_version() {
 # Mainly DEVEL_IMAGE_NAME and COMPOSE_TAG
 git_branch() {
     git rev-parse --abbrev-ref HEAD
-}
-sh_main() {
-    # TODO: This gitbranch call should probably be somewhere else.
-    export GIT_BRANCH="$(git_branch)"
-    echo "THIS PART WOULD RUN IN GITHUB ACTIONS VM"
-    echo "# and @ from sh_main: $# , $*"
-    if [[ $# -gt 0 ]]; then
-        sub="$1"
-        shift
-        case $sub in
-            nukepip)
-                pip_uninstalls
-            ;;
-            test)
-                # Let's just test running api-tests at first for now
-                set_branch devel set_version 0.1dev make print-VERSION
-            ;;
-            *)
-                echo "unknown subcommand: $sub"
-            ;;
-        esac
-
-    fi
-}
-test_sh_main () {
-    echo $"@"
-    DOCKER=echo sh_main "$@"
-    printf "DEVEL_IMAGE_NAME: %s\n" ${DEVEL_IMAGE_NAME} || :
-    printf "DEV_DOCKER_TAG_BASE: %s\n" ${DEV_DOCKER_TAG_BASE} || :
-    printf "COMPOSE_TAG: %s\n" ${COMPOSE_TAG} || :
 }
 # This mimics the 'make docker-runner' target.
 make_docker_runner () {
@@ -168,14 +146,47 @@ api_test () {
     export AWX_DOCKER_CMD=/start_tests.sh
         # && _call_runner
 }
-stub_env () {
+stub_github_env () {
     export CI_GITHUB_TOKEN="fakeass-gh-token"
     export GITHUB_ACTOR="fakeass-gh-actor"
 }
 _make_github_ci_runner () {
     # TODO: parse args for AWX_DOCKER_CMD or use AWX_DOCKER_CMD
-    stub_env
+    stub_github_env
     make github_ci_runner
+}
+do_ci() {
+    echo "Not implemented yet"
+}
+sh_main() {
+    # TODO: This gitbranch call should probably be somewhere else.
+    export GIT_BRANCH="$(git_branch)"
+    echo "THIS PART WOULD RUN IN GITHUB ACTIONS VM"
+    echo "# and @ from sh_main: $# , $*"
+    if [[ $# -gt 0 ]]; then
+        sub="$1"
+        shift
+        case $sub in
+            nukepip)
+                pip_uninstalls
+            ;;
+            test)
+                # Let's just test running api-tests at first for now
+                set_branch devel set_version 0.1dev make print-VERSION
+            ;;
+            *)
+                echo "unknown subcommand: $sub"
+            ;;
+        esac
+
+    fi
+}
+test_sh_main () {
+    echo $"@"
+    DOCKER=echo sh_main "$@"
+    printf "DEVEL_IMAGE_NAME: %s\n" ${DEVEL_IMAGE_NAME} || :
+    printf "DEV_DOCKER_TAG_BASE: %s\n" ${DEV_DOCKER_TAG_BASE} || :
+    printf "COMPOSE_TAG: %s\n" ${COMPOSE_TAG} || :
 }
 ## MAIN CALL ##
 test_sh_main "$@"
