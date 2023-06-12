@@ -27,10 +27,6 @@ error () {
 	  echo >&2 "error: $*"
 	  exit 1
 }
-
-# TODO(jjwatt): define docker(), too so that I can control calls to that.
-# e.g., probably want to capture calls to 'docker info' to avoid bugs
-# in the main.yml playbook and getting os info.
 install_deps_rhel8() {
     # Install deps that I needed on rhel8 in order to use
     # the awx repo, dev and build tools.
@@ -58,11 +54,18 @@ envmake() {
 make() {
     envmake "$@"
 }
+# TODO(jjwatt): define docker(), too so that I can control calls to that.
+# e.g., probably want to capture calls to 'docker info' to avoid bugs
+# in the main.yml playbook and getting os info.
 pip_uninstalls() {
     # TODO: ihateyoupip array and try to uninstall all of it
     pip uninstall -y setuptools-scm ansible-core || :
 }
 set_branch() {
+    # set_branch will set the GIT_BRANCH, COMPOSE_TAG, DEV_DOCKER_TAG_BASE,
+    # and DEVEL_IMAGE_NAME to the right stuff like the Makefile does.
+    # Use this to force pulling the devel docker image or an arbitrary
+    # docker image vs. needing to build your own.
     export GIT_BRANCH="$1"
     shift
     export COMPOSE_TAG="${GIT_BRANCH}"
@@ -79,6 +82,9 @@ set_awx_docker_cmd() {
     "$@"
 }
 set_version() {
+    # set_version will set VERSION and the COLLECTION_VERSION vars
+    # to force a VERSION string and prevent any version gathering
+    # that the Makefile does from running.
     VERSION="$1"
     shift
     COLLECTION_VERSION="$(echo "$VERSION" | cut -d . -f 1-3)"
@@ -89,63 +95,9 @@ set_version() {
 git_branch() {
     git rev-parse --abbrev-ref HEAD
 }
-# This mimics the 'make docker-runner' target.
-make_docker_runner () {
-    "${DOCKER}" run -u "${UID}" --rm \
-           -v "${PWD}":/awx_devel:Z \
-           --workdir=/awx_devel "${DEVEL_IMAGE_NAME}" \
-           "${AWX_DOCKER_CMD}"
-}
-my_docker_runner () {
-    # TODO: I don't need this fn right now
-    # NOTE: These defaults might let you run api-tests
-    # without building any docker images, etc.
-    # Everything from ./ is copied into the container,
-    # anyway, so you could still get dev/test versions,
-    # especially if we make sure that like `make awx-link`
-    # gets run (it does get run from /start_tests.sh)
-    # TODO: I got it working without building an image by
-    # forcing DEVEL_IMAGE_NAME, GIT_BRANCH, etc. and just
-    # running docker directly in do_ci()
-    : ${DOCKER:=docker}
-    : ${DEVEL_IMAGE_NAME:=devel}
-    # Inside baseball here. This is what 'api-tests' does
-    # eventually.
-    : ${AWX_DOCKER_CMD:=/start_tests.sh}
-    make_docker_runner
-}
-test_docker_runner () {
-    DOCKER=echo my_docker_runner
-}
-# test_docker_runner
-runner () {
-    # if flag_optimized then use my docker_runner with
-    # this AWX_DOCKER_CMD, otherwise call
-    # AWX_DOCKER_CMD=$1 make github_ci_runner
-    # or something like that
-    return
-}
-api_test () {
-    echo "Not implemented yet"
-    # TODO: run docker_runner with command /start_tests.sh just like the ci.yml
-    # OR setup and call `make github_ci_runner` with AWX_DOCKER_CMD set and
-    # github/ci stuff stubbed out.
-    # Nah. Decide how to do it in the sh_main
-    # OK, maybe a runner() function,
-
-    # then the tests functions would mainly just setup the command and call
-    # runner. Like: AWX_DOCKER_CMD=/start_tests.sh runner or do other stuff,
-    # then runner
-    export AWX_DOCKER_CMD=/start_tests.sh
-}
 stub_github_env () {
     export CI_GITHUB_TOKEN="fakeass-gh-token"
     export GITHUB_ACTOR="fakeass-gh-actor"
-}
-_make_github_ci_runner () {
-    # TODO: parse args for AWX_DOCKER_CMD or use AWX_DOCKER_CMD
-    stub_github_env
-    make github_ci_runner
 }
 do_ci() {
     if [[ $# -gt 0 ]]; then
