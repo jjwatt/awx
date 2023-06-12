@@ -11,16 +11,17 @@
 # ░ ░       ░         ░      ░     
 # ░                                
 # Tool that can run what AWX GitHub Actions runs, but different.
+# 0.2.0 "Switches on Everything"
+CIMU_VERSION=0.2.0
 
-# There's a great-looking github action local runner here:
+# NOTE: There's a great-looking github action local runner here:
 #   https://github.com/nektos/act
 # GitHub's full-blown runner is here:
 #   https://github.com/actions/runner
 # But, for now I think this'll do the trick.
 
 # We're evolving into a tool for bootstrapping, wrapping and running tests and
-# dev instances of AWX. Below is a list of environment variables that affect
-# CI-SH runs.
+# dev instances of AWX.
 
 error () {
 	  echo >&2 "error: $*"
@@ -44,22 +45,21 @@ install_deps_rhel8() {
 install_deps() {
     install_deps_rhel8
 }
-# Stash the realmake early in case we clobber it or need to call it at a higher level
+# Stash the realmake early in case we clobber it or need to call it at a different level
 realmake=$(command -v make)
-# TODO: Maybe build a list of environment overrides that need to be on the command line
-# I read that if you provide var=val to make, it will ignore defs in the Makefile
-# Test first and then see if I can take advantage of that.
 envmake() {
+    # envmake will run make and use environment variables to override any
+    # make variables.
     echo "inside envmake about to call realmake with overrides" >&2
     echo "realmake is: ${realmake}" >&2
     echo "version env vars from envmake(): VERSION=${VERSION}, COLLECTION_VERSION=${COLLECTION_VERSION}" >&2
     "${realmake}" --environment-overrides "$@"
 }
 make() {
-    echo "using my make about to call envmake" >&2
     envmake "$@"
 }
 pip_uninstalls() {
+    # TODO: ihateyoupip array and try to uninstall all of it
     pip uninstall -y setuptools-scm ansible-core || :
 }
 set_branch() {
@@ -79,14 +79,6 @@ set_awx_docker_cmd() {
     "$@"
 }
 set_version() {
-    # Hah. Goddamn. I think I just got bit by an off-by-one/double-doer kinda thing
-    # The COMPOSE_VERSION whatever joint runs the same setuptools scm junk, so
-    # even if I override VERSION and the hack works, the pip install will probably
-    # still be tirggered by the COMPOSE_VERSION thing. Anyway, look for any shell
-    # calls and override all those here just to make sure!
-    # It's COLLECTION_VERSION :
-    #   COLLECTION_VERSION ?= $(shell $(PYTHON) tools/scripts/scm_version.py | cut -d . -f 1-3)
-    # No. It still doesn't work.
     VERSION="$1"
     shift
     COLLECTION_VERSION="$(echo "$VERSION" | cut -d . -f 1-3)"
@@ -94,9 +86,6 @@ set_version() {
     export COLLECTION_VERSION
     "$@"
 }
-# I think we can get away with copying DEVEL_IMAGE_NAME and its parts from the
-# Makefile (just do what it does, but use default-if-exists shell expansions).
-# Mainly DEVEL_IMAGE_NAME and COMPOSE_TAG
 git_branch() {
     git rev-parse --abbrev-ref HEAD
 }
@@ -108,13 +97,16 @@ make_docker_runner () {
            "${AWX_DOCKER_CMD}"
 }
 my_docker_runner () {
+    # TODO: I don't need this fn right now
     # NOTE: These defaults might let you run api-tests
     # without building any docker images, etc.
     # Everything from ./ is copied into the container,
     # anyway, so you could still get dev/test versions,
     # especially if we make sure that like `make awx-link`
     # gets run (it does get run from /start_tests.sh)
-    # TODO: To be tested.
+    # TODO: I got it working without building an image by
+    # forcing DEVEL_IMAGE_NAME, GIT_BRANCH, etc. and just
+    # running docker directly in do_ci()
     : ${DOCKER:=docker}
     : ${DEVEL_IMAGE_NAME:=devel}
     # Inside baseball here. This is what 'api-tests' does
@@ -156,7 +148,6 @@ _make_github_ci_runner () {
     make github_ci_runner
 }
 do_ci() {
-    # TODO: runner="makerunner"
     if [[ $# -gt 0 ]]; then
         sub="$1"
         shift
@@ -207,7 +198,7 @@ do_ci() {
                             "${AWX_DOCKER_CMD}"
             ;;
             *)
-                # Figure out how to run a make command or something here.
+                # TODO: Maybe run a default, or maybe take the command from the args
                 echo set_branch devel set_version 0.1.dev "${sub}"
         esac
     else
@@ -229,7 +220,7 @@ sh_main() {
             ;;
             test)
                 # Let's just test running api-tests at first for now
-                set_branch devel set_version 0.1dev make print-VERSION
+                set_branch devel set_version 0.1.dev make print-VERSION
             ;;
             ci)
                 do_ci "$@"
