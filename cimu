@@ -10,19 +10,72 @@
 # ░         ▒ ░░      ░    ░░░ ░ ░ 
 # ░ ░       ░         ░      ░     
 # ░                                
-# Tool that can run what AWX GitHub Actions runs, but different.
+# Tool that can run AWX GitHub Actions runs, but different.
 # 0.2.0 "Switches on Everything"
-CIMU_VERSION=0.2.0
+# CIMU_VERSION=0.2.0
 
 # NOTE: There's a great-looking github action local runner here:
 #   https://github.com/nektos/act
 # GitHub's full-blown runner is here:
 #   https://github.com/actions/runner
-# But, for now I think this'll do the trick.
+# But, for now I think this will do the trick.
+
+# Colors
+# Variables for terminal requests.
+# shellcheck disable=SC2034
+# shellcheck disable=SC2015
+[[ -t 2 ]] && {
+    alt=$(      tput smcup  || tput ti      ) # Start alt display
+    ealt=$(     tput rmcup  || tput te      ) # End   alt display
+    hide=$(     tput civis  || tput vi      ) # Hide cursor
+    show=$(     tput cnorm  || tput ve      ) # Show cursor
+    save=$(     tput sc                     ) # Save cursor
+    load=$(     tput rc                     ) # Load cursor
+    bold=$(     tput bold   || tput md      ) # Start bold
+    stout=$(    tput smso   || tput so      ) # Start stand-out
+    estout=$(   tput rmso   || tput se      ) # End stand-out
+    under=$(    tput smul   || tput us      ) # Start underline
+    eunder=$(   tput rmul   || tput ue      ) # End   underline
+    reset=$(    tput sgr0   || tput me      ) # Reset cursor
+    blink=$(    tput blink  || tput mb      ) # Start blinking
+    italic=$(   tput sitm   || tput ZH      ) # Start italic
+    eitalic=$(  tput ritm   || tput ZR      ) # End   italic
+[[ $TERM != *-m ]] && { 
+    red=$(      tput setaf 1|| tput AF 1    )
+    green=$(    tput setaf 2|| tput AF 2    )
+    yellow=$(   tput setaf 3|| tput AF 3    )
+    blue=$(     tput setaf 4|| tput AF 4    )
+    magenta=$(  tput setaf 5|| tput AF 5    )
+    cyan=$(     tput setaf 6|| tput AF 6    )
+}
+    white=$(    tput setaf 7|| tput AF 7    )
+    default=$(  tput op                     )
+    eed=$(      tput ed     || tput cd      )   # Erase to end of display
+    eel=$(      tput el     || tput ce      )   # Erase to end of line
+    ebl=$(      tput el1    || tput cb      )   # Erase to beginning of line
+    ewl=$eel$ebl                                # Erase whole line
+    draw=$(     tput -S <<< '   enacs
+                                smacs
+                                acsc
+                                rmacs' || { \
+                tput eA; tput as;
+                tput ac; tput ae;         } )   # Drawing characters
+    back=$'\b'
+} 2>/dev/null ||:
+
+# The above leaves the variables unset when stderr isn't connected to a terminal
+# and leaves the color variables unset for monochrome terminals. The alternative
+# tput executions allow the code to keep working on systems where tput takes old
+# termcap names instead ANSI capnames. It also uses 2>/dev/null ||: to silence
+# potential errors and avoid ERR script abortion. That allows this code to be
+# used in a range of edge cases such as scripts that use set -e and terminals or
+# OS's that don't support certain sequences (the code is borrowed from
+# https://github.com/lhunath/scripts/blob/master/bashlib/bashlib )
 
 # We're evolving into a tool for bootstrapping, wrapping and running tests and
 # dev instances of AWX.
-
+: "${CIMU_DEFAULT_STUB_VERSION:=0.1.dev}"
+export CIMU_DEFAULT_STUB_VERSION
 error () {
 	  echo >&2 "error: $*"
 	  exit 1
@@ -37,9 +90,6 @@ install_deps_rhel8() {
         postgresql postgresql-devel \
         xmlsec1-devel libxml2-devel \
         libtool-ltdl-devel
-}
-install_deps() {
-    install_deps_rhel8
 }
 # Stash the realmake early in case we clobber it or need to call it at a different level
 realmake=$(command -v make)
@@ -100,18 +150,21 @@ stub_github_env () {
     export GITHUB_ACTOR="fakeass-gh-actor"
 }
 do_ci() {
+    # TODO: Accept flag somewhere for version/stubver so it's
+    # more discoverable a setting than an env var.
+    local _stubver="${CIMU_DEFAULT_STUB_VERSION:-0.1.dev}"
     if [[ $# -gt 0 ]]; then
         sub="$1"
         shift
         case $sub in
             github-ci-runner-api-tests)
-                # This is the "normal" flow that's called from github
-                # It's got some issues that we can get around, though
-                # Like, `github_ci_runner` depends on `github_ci_setup`
-                # which *forces* a call to `$(MAKE) docker-compose-build`
-                # even though that might be totally unnecessary (e.g.,
-                # we can just run the tests with the pulled image?)
-                # So, I will provide another path that tries to avoid that.
+                # This is an improved version of the "normal" flow that's called
+                # from github It's got some issues that we can get around,
+                # though Like, `github_ci_runner` depends on `github_ci_setup`
+                # which *forces* a call to `$(MAKE) docker-compose-build` even
+                # though that might be totally unnecessary (e.g., we can just
+                # run the tests with the pulled image?) So, I will provide
+                # another path that tries to avoid that.
 
                 # Since the make rule will force docker compose build, we should
                 # make sure we have some stuff first:
@@ -122,7 +175,7 @@ do_ci() {
                 # Let's try to force devel for now. Fix this later because
                 # probably not everyone will want it. I just want to see
                 # what it does v. my other runners.
-                set_branch devel set_version 0.1.dev make AWX_DOCKER_CMD=/start_tests.sh github_ci_runner
+                set_branch devel set_version "${_stubver}" make AWX_DOCKER_CMD=/start_tests.sh github_ci_runner
             ;;
             make-docker-runner-api-tests)
                 # This one still uses make but calls directly `make docker-runner`
@@ -131,7 +184,7 @@ do_ci() {
                 stub_github_env  # I don't think I need this here
                 # See start_tests.sh; without args it falls through and calls `make test` from within the container
                 export AWX_DOCKER_CMD=/start_tests.sh
-                set_branch devel set_version 0.1.dev set_awx_docker_cmd /start_tests.sh make docker-runner
+                set_branch devel set_version "${_stubver}" set_awx_docker_cmd /start_tests.sh make docker-runner
             ;;
             docker-api-tests)
                 # This one goes straight to running docker without calling make on the host at all
@@ -151,31 +204,46 @@ do_ci() {
             ;;
             *)
                 # TODO: Maybe run a default, or maybe take the command from the args
-                echo set_branch devel set_version 0.1.dev "${sub}"
+                echo set_branch devel set_version "${_stubver}" "${sub}"
         esac
     else
         echo "No args to do_ci. DEBUGGING echo: "
-        echo set_branch devel set_version 0.1.dev make tests
+        echo set_branch devel set_version "${_stubver}" make tests
     fi
+}
+make_docker_compose_sources() {
+    # Do the same thing `make docker-compose-sources` would do, but without make
+    echo "Not implemented"
 }
 sh_main() {
     # TODO: This gitbranch call should probably be somewhere else.
-    export GIT_BRANCH="$(git_branch)"
-    echo "THIS PART WOULD RUN IN GITHUB ACTIONS VM"
-    echo "# and @ from sh_main: $# , $*"
+    GIT_BRANCH="$(git_branch)"
+    export GIT_BRANCH
+    printf "%sSwitches on Everything!%s\n" "${blue}" "${reset}"
+    echo "${red}THIS PART WOULD RUN IN GITHUB ACTIONS VM${reset}"
+    echo "${green}# and @ from sh_main: $# , $* ${reset}"
     if [[ $# -gt 0 ]]; then
         sub="$1"
         shift
         case $sub in
-            nukepip)
+            unpip)
                 pip_uninstalls
             ;;
-            test)
-                # Let's just test running api-tests at first for now
-                set_branch devel set_version 0.1.dev make print-VERSION
+            test-version)
+                local _stubver=0.1.dev
+                set_branch devel set_version "${_stubver}" make print-VERSION
+            ;;
+            test-playbook-os-info)
+                # TODO: write ansible-playbook sources.yml function
+            ;;
+            install-deps-rhel8)
+                install_deps_rhel8
             ;;
             ci)
                 do_ci "$@"
+            ;;
+            self-lint)
+                shellcheck "${BASH_SOURCE[0]}"
             ;;
             *)
                 echo "unknown subcommand: $sub"
@@ -184,12 +252,5 @@ sh_main() {
 
     fi
 }
-test_sh_main () {
-    echo $"@"
-    sh_main "$@"
-    # printf "DEVEL_IMAGE_NAME: %s\n" ${DEVEL_IMAGE_NAME} || :
-    # printf "DEV_DOCKER_TAG_BASE: %s\n" ${DEV_DOCKER_TAG_BASE} || :
-    # printf "COMPOSE_TAG: %s\n" ${COMPOSE_TAG} || :
-}
 ## MAIN CALL ##
-test_sh_main "$@"
+sh_main "$@"
