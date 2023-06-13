@@ -225,21 +225,95 @@ make_docker_compose_sources() {
                          "${minikube_playbook}"
     fi
     : "${sources_playbook:=tools/docker-compose/ansible/sources.yml}"
+    # NOTE: I do not directly ensure, test or override any of these in this
+    # function because this function is a runner. You override the vars and
+    # then call this or call it from one of my env exec chain functions.
+    # That design idea makes sure that this stays both as close to the
+    # original/makefile one as possible *and* it is maximally hackable.
+    # Do any hard setup or making sure the vars are setup properly from
+    # somewhere else and then "call into" this function.
+    # TODO: Handle the vars with an array and a loop, maybe a fn for
+    #       writing the command intelligently.
     "${playbookbin}" -i "${sources_inventory}" \
                      "${sources_playbook}" \
-        -e awx_image=$(DEV_DOCKER_TAG_BASE)/awx_devel \
-        -e awx_image_tag=$(COMPOSE_TAG) \
-        -e receptor_image=$(RECEPTOR_IMAGE) \
-        -e control_plane_node_count=$(CONTROL_PLANE_NODE_COUNT) \
-        -e execution_node_count=$(EXECUTION_NODE_COUNT) \
-        -e minikube_container_group=$(MINIKUBE_CONTAINER_GROUP) \
-        -e enable_keycloak=$(KEYCLOAK) \
-        -e enable_ldap=$(LDAP) \
-        -e enable_splunk=$(SPLUNK) \
-        -e enable_prometheus=$(PROMETHEUS) \
-        -e enable_grafana=$(GRAFANA) \
-        -e enable_tacacs=$(TACACS) \
-        $(EXTRA_SOURCES_ANSIBLE_OPTS)
+                     -e awx_image="${DEV_DOCKER_TAG_BASE}"/awx_devel \
+                     -e awx_image_tag="${COMPOSE_TAG}" \
+                     -e receptor_image="${RECEPTOR_IMAGE}" \
+                     -e control_plane_node_count="${CONTROL_PLANE_NODE_COUNT}" \
+                     -e execution_node_count="${EXECUTION_NODE_COUNT}" \
+                     -e minikube_container_group="${MINIKUBE_CONTAINER_GROUP}" \
+                     -e enable_keycloak="${KEYCLOAK}" \
+                     -e enable_ldap="${LDAP}" \
+                     -e enable_splunk="${SPLUNK}" \
+                     -e enable_prometheus="${PROMETHEUS}" \
+                     -e enable_grafana="${GRAFANA}" \
+                     -e enable_tacacs="${TACACS}" \
+                     "${EXTRA_SOURCES_ANSIBLE_OPTS}"
+}
+realdocker="$(command -v docker)"
+my_docker() {
+    if [[ $1 ]]; then
+        case $1 in
+            info)
+                echo "Operating System: Linux"
+            ;;
+            *)
+                "${realdocker}" "$@"
+            ;;
+        esac
+    fi
+}
+docker() {
+    my_docker "$@"
+}
+my_make_docker_compose_sources() {
+    # What I want to do is make sure the bad os info call does not run,
+    # but maybe there are ways to make sure other stuff doesn't run using
+    # changed_when
+    # Try setting os_info in EXTRA_SOURCES_ANSIBLE_OPTS and calling into
+    # make_docker_compose_sources
+    # TODO: set or append
+    # TODO: Make a file and use @filename.yml to -e
+    # TODO: Should probably do that ^^ for all the vars
+    tmpfile="$(mktemp XXXXX.yml)"
+    cat > "$tmpfile" <<-EOF
+        os_info:
+            stdout: Linux
+EOF
+    EXTRA_SOURCES_ANSIBLE_OPTS="-e @${tmpfile}"
+    trap 'rm -rf ${tmpfile}' EXIT
+    # Still does not seem to stop the Get OS info from running
+    # TODO: Maybe try rewriting the playbook and using the new one
+    # Maybe just fix it with sed for now
+    export EXTRA_SOURCES_ANSIBLE_OPTS
+    : "${RECEPTOR_IMAGE:=quay.io/ansible/receptor:devel}"
+    export RECEPTOR_IMAGE
+    : "${CONTROL_PLANE_NODE_COUNT:=1}"
+    export CONTROL_PLANE_NODE_COUNT
+    : "${EXECUTION_NODE_COUNT:=1}"
+    export EXECUTION_NODE_COUNT
+    : "${KEYCLOAK:=false}"
+    export KEYCLOAK
+    : "${LDAP:=false}"
+    export LDAP
+    : "${SPLUNK:=false}"
+    export SPLUNK
+    : "${PROMETHEUS:=false}"
+    export PROMETHEUS
+    : "${GRAFANA:=false}"
+    export GRAFANA
+    : "${TACACS:=false}"
+    export TACACS
+    # Just setting branch and version for now, but use env later
+    # or make this a middleware fn itself and call back out to the
+    # next program so we can chain into this
+    set_branch devel set_version 0.1.dev make_docker_compose_sources
+    # TODO: write a function that just runs the os info task
+    # TODO: This could be "set_os" if I can get it to work
+    # NOTE: don't forget that os_info is a struct :/ need os_info.stdout
+    # NOTE: may be able to write out a tools/docker-compose/host_vars/localhost
+    #       with modified vars in it and it could get picked up automatically
+    # NOTE: ansible-playbook has --start-at-task
 }
 sh_main() {
     # TODO: This gitbranch call should probably be somewhere else.
@@ -260,7 +334,11 @@ sh_main() {
                 set_branch devel set_version "${_stubver}" make print-VERSION
             ;;
             test-playbook-os-info)
-                # TODO: write ansible-playbook sources.yml function
+                _stubver=0.1.dev
+                my_make_docker_compose_sources
+            ;;
+            test-my-docker)
+                docker info | grep 'Operating System'
             ;;
             install-deps-rhel8)
                 install_deps_rhel8
