@@ -150,6 +150,8 @@ stub_github_env () {
     export GITHUB_ACTOR="fakeass-gh-actor"
 }
 do_ci() {
+    # TODO: Make self-documenting by tagging user-level functions with comments
+    # or by name or something.
     # TODO: Accept flag somewhere for version/stubver so it's
     # more discoverable a setting than an env var.
     local _stubver="${CIMU_DEFAULT_STUB_VERSION:-0.1.dev}"
@@ -213,11 +215,35 @@ do_ci() {
 }
 make_docker_compose_sources() {
     # Do the same thing `make docker-compose-sources` would do, but without make
-    echo "Not implemented"
+    # and everything is hackable through setting vars before calling.
+    : "${playbookbin:=ansible-playbook}"
+    : "${minikube_playbook:=tools/docker-compose-minikube/deploy.yml}"
+    : "${sources_inventory:=tools/docker-compose/inventory}"
+    if [[ $MINIKUBE_CONTAINER_GROUP ]]; then
+        "${playbookbin}" -i "${sources_inventory}" \
+                         -e minikube_setup="${MINIKUBE_SETUP}" \
+                         "${minikube_playbook}"
+    fi
+    : "${sources_playbook:=tools/docker-compose/ansible/sources.yml}"
+    "${playbookbin}" -i "${sources_inventory}" \
+                     "${sources_playbook}" \
+        -e awx_image=$(DEV_DOCKER_TAG_BASE)/awx_devel \
+        -e awx_image_tag=$(COMPOSE_TAG) \
+        -e receptor_image=$(RECEPTOR_IMAGE) \
+        -e control_plane_node_count=$(CONTROL_PLANE_NODE_COUNT) \
+        -e execution_node_count=$(EXECUTION_NODE_COUNT) \
+        -e minikube_container_group=$(MINIKUBE_CONTAINER_GROUP) \
+        -e enable_keycloak=$(KEYCLOAK) \
+        -e enable_ldap=$(LDAP) \
+        -e enable_splunk=$(SPLUNK) \
+        -e enable_prometheus=$(PROMETHEUS) \
+        -e enable_grafana=$(GRAFANA) \
+        -e enable_tacacs=$(TACACS) \
+        $(EXTRA_SOURCES_ANSIBLE_OPTS)
 }
 sh_main() {
     # TODO: This gitbranch call should probably be somewhere else.
-    GIT_BRANCH="$(git_branch)"
+    [[ $GIT_BRANCH ]] || GIT_BRANCH="$(git_branch)"
     export GIT_BRANCH
     printf "%sSwitches on Everything!%s\n" "${blue}" "${reset}"
     echo "${red}THIS PART WOULD RUN IN GITHUB ACTIONS VM${reset}"
