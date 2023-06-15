@@ -260,6 +260,12 @@ my_docker() {
             info)
                 echo "Operating System: Linux"
             ;;
+            help)
+                echo "ok"
+            ;;
+            test)
+                echo "ok"
+            ;;
             *)
                 "${realdocker}" "$@"
             ;;
@@ -338,6 +344,9 @@ sh_main() {
             ;;
             test-playbook-os-info)
                 _stubver=0.1.dev
+                # Make sure docker info is stubbed
+                export -f my_docker docker
+                export realdocker
                 my_make_docker_compose_sources
             ;;
             test-my-docker)
@@ -349,7 +358,7 @@ sh_main() {
                 chmod +x "${tmprunner}"
                 cat > "${tmprunner}" <<- 'EOF'
                     #!/bin/bash
-                    exec docker info | grep 'Operating System'
+                    docker info | grep 'Operating System'
 EOF
                 exec "${tmprunner}"
                 # docker info | grep 'Operating System'
