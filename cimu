@@ -275,6 +275,27 @@ my_docker() {
 docker() {
     my_docker "$@"
 }
+set_docker() {
+    # TODO: take argument for which docker to set docker to
+    if [[ $# = 0 ]]; then
+        # set docker stub to sane default
+        # might need to use refs for some of this
+        echo "not implemented"
+    fi
+    if command -v docker; then
+        olddocker="$(command -v docker)"
+        realdocker="${olddocker}"
+    fi
+    docker() {
+        my_docker "$@"
+    }
+    export -f my_docker
+    export -f docker
+    export olddocker realdocker
+}
+unset_docker() {
+    unset -f docker my_docker || :
+}
 my_make_docker_compose_sources() {
     # What I want to do is make sure the bad os info call does not run,
     # but maybe there are ways to make sure other stuff doesn't run using
@@ -284,13 +305,13 @@ my_make_docker_compose_sources() {
     # TODO: set or append
     # TODO: Make a file and use @filename.yml to -e
     # TODO: Should probably do that ^^ for all the vars
-    tmpfile="$(mktemp XXXXX.yml)"
-    cat > "$tmpfile" <<-EOF
-        os_info:
-            stdout: Linux
-EOF
-    EXTRA_SOURCES_ANSIBLE_OPTS="-e @${tmpfile}"
-    trap 'rm -rf ${tmpfile}' EXIT
+    # tmpfile="$(mktemp XXXXX.yml)"
+    # cat > "$tmpfile" <<-EOF
+    #     os_info:
+    #         stdout: Linux
+# EOF
+    # EXTRA_SOURCES_ANSIBLE_OPTS="-e @${tmpfile}"
+    # trap 'rm -rf ${tmpfile}' EXIT
     # Still does not seem to stop the Get OS info from running
     # TODO: Maybe try rewriting the playbook and using the new one
     # Maybe just fix it with sed for now
