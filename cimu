@@ -78,7 +78,10 @@
 export CIMU_DEFAULT_STUB_VERSION
 error () {
 	  echo >&2 "error: $*"
-	  exit 1
+}
+die() {
+    error "${2?}"
+    exit "${1?}"
 }
 install_deps_rhel8() {
     # Install deps that I needed on rhel8 in order to use
@@ -170,8 +173,8 @@ do_ci() {
 
                 # Since the make rule will force docker compose build, we should
                 # make sure we have some stuff first:
-                command -v ansible-playbook || error "No ansible-playbook command available"
-                command -v docker-compose || error "No docker-compose command available"
+                command -v ansible-playbook > /dev/null 2>&1 || die 2 "No ansible-playbook command available"
+                command -v docker-compose > /dev/null 2>&1 || die 2 "No docker-compose command available"
                 stub_github_env
                 export AWX_DOCKER_CMD=/start_tests.sh
                 # Let's try to force devel for now. Fix this later because
@@ -338,7 +341,18 @@ sh_main() {
                 my_make_docker_compose_sources
             ;;
             test-my-docker)
-                docker info | grep 'Operating System'
+                export -f my_docker
+                export -f docker
+                export realdocker
+                tmprunner="$(mktemp)"
+                echo "${tmprunner}" >&2
+                chmod +x "${tmprunner}"
+                cat > "${tmprunner}" <<- 'EOF'
+                    #!/bin/bash
+                    exec docker info | grep 'Operating System'
+EOF
+                exec "${tmprunner}"
+                # docker info | grep 'Operating System'
             ;;
             install-deps-rhel8)
                 install_deps_rhel8
