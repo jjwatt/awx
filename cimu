@@ -20,6 +20,8 @@
 #   https://github.com/actions/runner
 # But, for now I think this will do the trick.
 
+# TODO(jjwatt): Write usage()
+
 # Colors
 # Variables for terminal requests.
 # shellcheck disable=SC2034
@@ -107,9 +109,6 @@ envmake() {
 make() {
     envmake "$@"
 }
-# TODO(jjwatt): define docker(), too so that I can control calls to that.
-# e.g., probably want to capture calls to 'docker info' to avoid bugs
-# in the main.yml playbook and getting os info.
 pip_uninstalls() {
     # TODO: ihateyoupip array and try to uninstall all of it
     pip uninstall -y setuptools-scm ansible-core || :
@@ -160,6 +159,7 @@ do_ci() {
     local _stubver="${CIMU_DEFAULT_STUB_VERSION:-0.1.dev}"
     if [[ $# -gt 0 ]]; then
         sub="$1"
+        # Pull out subcommand
         shift
         case $sub in
             github-ci-runner-api-tests)
@@ -250,18 +250,20 @@ make_docker_compose_sources() {
                      -e enable_splunk="${SPLUNK}" \
                      -e enable_prometheus="${PROMETHEUS}" \
                      -e enable_grafana="${GRAFANA}" \
-                     -e enable_tacacs="${TACACS}" \
-                     "${EXTRA_SOURCES_ANSIBLE_OPTS}"
+                     -e enable_tacacs="${TACACS}" [[ -n "${EXTRA_SOURCES_ANSIBLE_OPTS}" ]] && "${EXTRA_SOURCES_ANSIBLE_OPTS}"
+                     #"${EXTRA_SOURCES_ANSIBLE_OPTS:-}"
 }
 realdocker="$(command -v docker)"
 my_docker() {
     if [[ $1 ]]; then
         case $1 in
             info)
+                # It is fine for this to always say Linux.
+                # Something later on in awx setup looks to
+                # see if this is Docker Desktop on Mac.
+                # So, it might break that on macOS. I don't
+                # know yet.
                 echo "Operating System: Linux"
-            ;;
-            help)
-                echo "ok"
             ;;
             test)
                 echo "ok"
@@ -286,11 +288,7 @@ set_docker() {
         olddocker="$(command -v docker)"
         realdocker="${olddocker}"
     fi
-    docker() {
-        my_docker "$@"
-    }
-    export -f my_docker
-    export -f docker
+    export -f my_docker docker
     export olddocker realdocker
 }
 unset_docker() {
@@ -371,8 +369,7 @@ sh_main() {
                 my_make_docker_compose_sources
             ;;
             test-my-docker)
-                export -f my_docker
-                export -f docker
+                export -f my_docker docker
                 export realdocker
                 tmprunner="$(mktemp)"
                 echo "${tmprunner}" >&2
@@ -390,7 +387,7 @@ EOF
             ci)
                 do_ci "$@"
             ;;
-            self-lint)
+            lint-self)
                 shellcheck "${BASH_SOURCE[0]}"
             ;;
             *)
