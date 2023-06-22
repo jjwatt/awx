@@ -113,11 +113,7 @@ pip_uninstalls() {
     # TODO: ihateyoupip array and try to uninstall all of it
     pip uninstall -y setuptools-scm ansible-core || :
 }
-set_branch() {
-    # set_branch will set the GIT_BRANCH, COMPOSE_TAG, DEV_DOCKER_TAG_BASE,
-    # and DEVEL_IMAGE_NAME to the right stuff like the Makefile does.
-    # Use this to force pulling the devel docker image or an arbitrary
-    # docker image vs. needing to build your own.
+_set_branch() {
     export GIT_BRANCH="$1"
     shift
     export COMPOSE_TAG="${GIT_BRANCH}"
@@ -125,8 +121,14 @@ set_branch() {
     # TODO(jjwatt): Refactor
     export DEV_DOCKER_TAG_BASE=${DEV_DOCKER_TAG_BASE:-ghcr.io/ansible}
     export DEVEL_IMAGE_NAME=${DEV_DOCKER_TAG_BASE}/awx_devel:${COMPOSE_TAG}
+}
+set_branch() {
+    # set_branch will set the GIT_BRANCH, COMPOSE_TAG, DEV_DOCKER_TAG_BASE,
+    # and DEVEL_IMAGE_NAME to the right stuff like the Makefile does.
+    # Use this to force pulling the devel docker image or an arbitrary
+    # docker image vs. needing to build your own.
     # TODO: Probably need to only exec into "$@" if there are more args
-    "$@"
+    _set_branch "$@"
 }
 set_awx_docker_cmd() {
     export AWX_DOCKER_CMD="$1"
@@ -199,10 +201,16 @@ do_ci() {
                 stub_github_env # just in case?
                 : "${UID:=$(id -u)}"
                 : "${PWD:=$(pwd)}"
-                : "${DEVEL_IMAGE_NAME:=devel}"
+                _set_branch devel
+                # : "${DEVEL_IMAGE_NAME:=devel}"
                 : "${AWX_DOCKER_CMD:=/start_tests.sh}"
                 export UID PWD DEVEL_IMAGE_NAME AWX_DOCKER_CMD
-                "${DOCKER:-docker}" run -u "${UID}" --rm \
+                # This is not working right on podman right now
+                # echo "${DOCKER:-docker}" run -u "${UID}" --rm \
+                #             -v "${PWD}":/awx_devel:Z \
+                #             --workdir=/awx_devel "${DEVEL_IMAGE_NAME}" \
+                #             "${AWX_DOCKER_CMD}"
+                "${DOCKER:-docker}" run --rm \
                             -v "${PWD}":/awx_devel:Z \
                             --workdir=/awx_devel "${DEVEL_IMAGE_NAME}" \
                             "${AWX_DOCKER_CMD}"
