@@ -13,6 +13,7 @@
 
   pre_tasks:
 
+    # TODO(jjwatt): task that copies over test roles from awx_collection
     - name: "Determine collection (block)"
       block:
         - name: "Check if the collection ansible.controller is installed"
@@ -31,3 +32,7 @@
           ansible.builtin.debug:
             msg: "Using the 'controller_api' plugin from: {{ controller_api_plugin }}"
 
+  tasks:
+    - name: Include ad-hoc role
+      include_role:
+        name: ad_hoc_command
