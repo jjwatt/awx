@@ -1,3 +1,4 @@
+---
 - name: Playbook to run green thread collection tests
   hosts: localhost
   connection: local
@@ -7,6 +8,12 @@
     gateway_password: admin
     gateway_validate_certs: false
     gateway_configuration_users_secure_logging: false
+  # In 2.5, ansible.controller will not work with some entities like organizations,
+  # so for now, we are using the gateway collections and the `ansible.platform`
+  # namespace from that collection.
+  # In the future, it's expected that `ansible.controller` will work again, and
+  # when it does, we should change this back to `ansible.controller` and use
+  # modules from there.
   collections:
     - ansible.platform
   tasks:
@@ -18,10 +25,19 @@
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
         gateway_validate_certs: false
-        
-#  tasks:
-    # - name: Include ad-hoc role
-    #   include_role:
-    #     name: ad_hoc_command
-      # collections:
-      #   - ansible.controller
+        #    - include_tasks: integration/targets/settings_test/tasks/main.yml
+        #    - include_tasks: integration/targets/users_test/tasks/main.yml
+        #    - include_tasks: integration/targets/organizations_test/tasks/main.yml
+        #    - include_tasks: integration/targets/teams_test/tasks/main.yml
+        #    - include_tasks: integration/targets/authenticators_test/tasks/main.yml
+        #    - include_tasks: integration/targets/authenticator_maps_test/tasks/main.yml
+        #    - include_tasks: integration/targets/applications_test/tasks/main.yml
+        #    - include_tasks: integration/targets/service_clusters_test/tasks/main.yml
+        #    - include_tasks: integration/targets/service_nodes_test/tasks/main.yml
+        #    - include_tasks: integration/targets/service_keys_test/tasks/main.yml
+        #    - include_tasks: integration/targets/http_ports_test/tasks/main.yml
+        #    - include_tasks: integration/targets/services_test/tasks/main.yml
+        #    - include_tasks: integration/targets/routes_test/tasks/main.yml
+        #    - include_tasks: integration/targets/role_user_assignments_test/tasks/main.yml
+        #    - include_tasks: integration/targets/lookup_test/tasks/main.yml
+...
