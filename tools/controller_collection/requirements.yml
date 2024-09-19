@@ -1,0 +1,3 @@
+---
+collections:
+  - name: git@github.com:ansible/aap-gateway.git#/gateway_configuration_collection,devel
